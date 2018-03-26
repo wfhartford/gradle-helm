@@ -28,6 +28,17 @@ open class HelmPlugin : Plugin<Project> {
     val INSTALL_TASK_NAME = "installHelm"
     val INITIALIZE_TASK_NAME = "initializeHelm"
     val PACKAGE_TASK_NAME = "packageHelmChart"
+
+    val TASKS_NAMES = setOf(
+        VERIFY_ARCH_TASK_NAME,
+        VERIFY_OS_TASK_NAME,
+        VERIFY_TASK_NAME,
+        DOWNLOAD_TASK_NAME,
+        INSTALL_TASK_NAME,
+        INITIALIZE_TASK_NAME,
+        PACKAGE_TASK_NAME
+    )
+
     val SUPPORTED_ARCHITECTURES = setOf("amd64", "x86_64")
   }
 
