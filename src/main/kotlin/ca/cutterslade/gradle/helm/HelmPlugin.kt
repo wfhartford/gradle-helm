@@ -11,12 +11,12 @@ import org.gradle.api.tasks.*
 import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.invoke
 import org.gradle.kotlin.dsl.withConvention
+import org.gradle.process.CommandLineArgumentProvider
 import java.io.File
 import java.net.URL
 import java.nio.file.Files
 import java.util.concurrent.Callable
 import javax.inject.Inject
-import kotlin.reflect.KClass
 import kotlin.reflect.KProperty
 
 open class HelmPlugin : Plugin<Project> {
@@ -27,6 +27,9 @@ open class HelmPlugin : Plugin<Project> {
     val DOWNLOAD_TASK_NAME = "downloadHelm"
     val INSTALL_TASK_NAME = "installHelm"
     val INITIALIZE_TASK_NAME = "initializeHelm"
+    val ENSURE_NO_CHART_TASK_NAME = "ensureNoHelmChart"
+    val CREATE_TASK_NAME = "createHelmChart"
+    val LINT_TASK_NAME = "lintHelmChart"
     val PACKAGE_TASK_NAME = "packageHelmChart"
 
     val TASKS_NAMES = setOf(
@@ -36,6 +39,9 @@ open class HelmPlugin : Plugin<Project> {
         DOWNLOAD_TASK_NAME,
         INSTALL_TASK_NAME,
         INITIALIZE_TASK_NAME,
+        ENSURE_NO_CHART_TASK_NAME,
+        CREATE_TASK_NAME,
+        LINT_TASK_NAME,
         PACKAGE_TASK_NAME
     )
 
@@ -45,7 +51,7 @@ open class HelmPlugin : Plugin<Project> {
   override fun apply(project: Project) {
     project.run {
       plugins.apply(JavaBasePlugin::class.java)
-      withJava { sourceSets.create("helm") }
+      val sourceSet = withJava { sourceSets.create("helm") }
       extensions.create("helm", HelmExtension::class.java, project, objects)
 
       tasks {
@@ -70,28 +76,65 @@ open class HelmPlugin : Plugin<Project> {
           dependsOn(verifyTask)
         }
         val installTask = INSTALL_TASK_NAME(InstallTask::class) {
-          dependsOn(downloadTask)
+          dependsOn(verifyTask, downloadTask)
         }
         val initTask = INITIALIZE_TASK_NAME(InitializeTask::class) {
-          dependsOn(installTask)
+          dependsOn(verifyTask, installTask)
+        }
+        val ensureNoChartTask = ENSURE_NO_CHART_TASK_NAME(EnsureNoChartTask::class)
+        CREATE_TASK_NAME(CreateChartTask::class) {
+          dependsOn(ensureNoChartTask, verifyTask, initTask)
+        }
+        LINT_TASK_NAME(LintTask::class) {
+          dependsOn(verifyTask, initTask, sourceSet.processResourcesTaskName)
+          tasks["check"].dependsOn(this)
         }
         val packageTask = PACKAGE_TASK_NAME(PackageTask::class) {
-          dependsOn(initTask)
+          dependsOn(verifyTask, initTask, tasks["check"], sourceSet.processResourcesTaskName)
+          tasks["assemble"].dependsOn(this)
         }
       }
     }
   }
-
-  private fun <T : Task> Project.task(type: KClass<T>, name: String) =
-      task(mapOf("type" to DownloadTask::class.java), name)
 }
 
 open class HelmExtension @Inject constructor(private var project: Project, private var objectFactory: ObjectFactory) {
   val install by lazy { objectFactory.newInstance(HelmInstallation::class.java, project) }
+  val lint by lazy { objectFactory.newInstance(HelmLint::class.java, project) }
   var chartName by DefaultingDelegate { project.name }
   var chartVersion by DefaultingDelegate { project.version }
   var appVersion by DefaultingDelegate { project.version }
   var chartRepository by DefaultingDelegate { "https://kubernetes-charts.storage.googleapis.com/" }
+  var chartDir by DefaultingDelegate {
+    project.helmSource().resources.srcDirs.first().toPath().resolve(chartName).toFile()
+  }
+}
+
+open class HelmInstallation @Inject constructor(private val project: Project) {
+  var version: String by DefaultingDelegate { "v2.8.2" }
+  var os: OperatingSystem by DefaultingDelegate { OperatingSystem.detect() }
+  var helmFilename: String by DefaultingDelegate { os.filename(this) }
+  var url: String by DefaultingDelegate { os.url(this) }
+  var workingDir: File by DefaultingDelegate { project.file("${project.buildDir}/helm") }
+  var archiveFile: File by DefaultingDelegate { project.file("$workingDir/$helmFilename") }
+  var homeDir: File by DefaultingDelegate { project.file("$workingDir/home") }
+  var packageDir: File by DefaultingDelegate { project.file("$homeDir/package") }
+  var installDir: File by DefaultingDelegate { project.file("$workingDir/install") }
+  var executable: File by DefaultingDelegate { project.file("$installDir/${os.executable()}") }
+}
+
+open class HelmLint @Inject constructor(private val project: Project) {
+  var strict: Boolean by DefaultingDelegate { false }
+  var values: Map<String, String> by DefaultingDelegate { mapOf<String, String>() }
+  var valuesFiles: List<Any> by DefaultingDelegate { listOf<Any>() }
+}
+
+class DefaultingDelegate<T>(private val supplier: () -> T) {
+  var value: T? = null
+  operator fun getValue(thisRef: Any?, property: KProperty<*>) = value ?: supplier()
+  operator fun setValue(thisRef: Any?, property: KProperty<*>, arg: T) {
+    value = arg
+  }
 }
 
 enum class OperatingSystem(
@@ -118,28 +161,7 @@ enum class OperatingSystem(
   fun executable() = "$filenamePart-amd64/helm$executableSuffix"
 }
 
-open class HelmInstallation @Inject constructor(private val project: Project) {
-  var version: String by DefaultingDelegate { "v2.8.2" }
-  var os: OperatingSystem by DefaultingDelegate { OperatingSystem.detect() }
-  var helmFilename: String by DefaultingDelegate { os.filename(this) }
-  var url: String by DefaultingDelegate { os.url(this) }
-  var workingDir: File by DefaultingDelegate { project.file("${project.buildDir}/helm") }
-  var archiveFile: File by DefaultingDelegate { project.file("$workingDir/$helmFilename") }
-  var homeDir: File by DefaultingDelegate { project.file("$workingDir/home") }
-  var packageDir: File by DefaultingDelegate { project.file("$homeDir/package") }
-  var installDir: File by DefaultingDelegate { project.file("$workingDir/install") }
-  var executable: File by DefaultingDelegate { project.file("$installDir/${os.executable()}") }
-}
-
-class DefaultingDelegate<T>(private val supplier: () -> T) {
-  var value: T? = null
-  operator fun getValue(thisRef: Any?, property: KProperty<*>) = value ?: supplier()
-  operator fun setValue(thisRef: Any?, property: KProperty<*>, arg: T) {
-    value = arg
-  }
-}
-
-internal fun <T> Any.withJava(function: JavaPluginConvention.() -> T): T =
+internal fun <T> Project.withJava(function: JavaPluginConvention.() -> T): T =
     withConvention(JavaPluginConvention::class, function)
 
 internal fun Project.helm(): HelmExtension = extensions.getByType(HelmExtension::class.java)
@@ -178,47 +200,111 @@ open class InstallTask : Copy() {
   }
 }
 
-abstract class HelmExecTask : Exec() {
-  class Arg(val arg: Any) {
-    override fun toString(): String =
-        if (arg is Callable<*>) Arg(arg.call()).toString() else arg.toString()
+fun arg(arg: Any): CommandLineArgumentProvider = CommandLineArgumentProvider {
+  when (arg) {
+    is CommandLineArgumentProvider -> arg.asArguments()
+    is Callable<*> -> arg(arg.call()).asArguments()
+    is Iterable<*> -> arg.flatMap { it?.let { arg(it).asArguments() } ?: listOf() }
+    else -> listOf(arg.toString())
   }
+}
 
+abstract class HelmExecTask : Exec() {
   @InputFile
   val helmExecutable = Callable { helm().install.executable }
+  abstract val home: Callable<File>
 
-  fun helmArgs(vararg args: Any) {
-    commandLine(Arg(helmExecutable), *(args.map { Arg(it) }.toTypedArray()))
+  init {
+    executable(object {
+      override fun toString() = helmExecutable().toString()
+    })
+    argumentProviders.add(CommandLineArgumentProvider { listOf("--home", home().toString()) })
+    argumentProviders.addAll(helmArgs())
   }
+
+  abstract fun helmArgs(): List<CommandLineArgumentProvider>
 }
 
 open class InitializeTask : HelmExecTask() {
   @OutputDirectory
-  val home = Callable { helm().install.homeDir }
+  override val home = Callable { helm().install.homeDir }
 
-  init {
-    helmArgs("init", "--home", home, "--client-only")
+  override fun helmArgs() = listOf(CommandLineArgumentProvider {
+    listOf(
+        "init",
+        "--client-only"
+    )
+  })
+}
+
+open class EnsureNoChartTask : DefaultTask() {
+  @Internal
+  val chartDir = Callable { helm().chartDir }
+  @TaskAction
+  fun noChart() {
+    chartDir().run {
+      toPath().resolve("Chart.yaml").also {
+        if (Files.exists(it)) throw IllegalStateException("Cannot create chart when exists: '$it'")
+      }
+    }
   }
+}
+
+open class CreateChartTask : HelmExecTask() {
+  @InputDirectory
+  override val home = Callable { helm().install.homeDir }
+  @OutputDirectory
+  val chartDir = Callable { helm().chartDir }
+
+  override fun helmArgs() = listOf(CommandLineArgumentProvider { listOf("create", chartDir().toString()) })
+}
+
+open class LintTask : HelmExecTask() {
+  @InputDirectory
+  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(helm().chartName).toFile() }
+  @InputDirectory
+  override val home = Callable { helm().install.homeDir }
+  @Input
+  val strict = Callable { helm().lint.strict }
+  @Input
+  val values = Callable { helm().lint.values }
+  @InputFiles
+  val valuesFile = Callable { helm().lint.valuesFiles }
+
+  override fun helmArgs() = listOf(
+      CommandLineArgumentProvider { listOf("lint") },
+      CommandLineArgumentProvider { if (strict()) listOf("--strict") else listOf() },
+      CommandLineArgumentProvider { values().entries.flatMap { (key, value) -> listOf("--set", "$key=$value") } },
+      CommandLineArgumentProvider {
+        valuesFile().flatMap { file ->
+          listOf("--values",
+              project.file(file).toString())
+        }
+      },
+      CommandLineArgumentProvider { listOf(chart().toString()) }
+  )
 }
 
 open class PackageTask : HelmExecTask() {
   @OutputDirectory
   val packageDir = Callable { helm().install.packageDir }
   @InputDirectory
-  val home = Callable { helm().install.homeDir }
+  override val home = Callable { helm().install.homeDir }
+  @Input
+  val appVersion = Callable { helm().appVersion }
+  @Input
+  val chartVersion = Callable { helm().chartVersion }
   @InputDirectory
   val chart = Callable { helmSource().output.resourcesDir }
 
-  init {
-    doFirst { packageDir().mkdirs() }
-    helmArgs(
-        "--home", home,
+  override fun helmArgs() = listOf(CommandLineArgumentProvider {
+    listOf(
         "package",
-        "--app-version", Callable { helm().appVersion },
-        "--version", Callable { helm().chartVersion },
-        "--destination", packageDir,
+        "--app-version", appVersion().toString(),
+        "--version", chartVersion().toString(),
+        "--destination", packageDir().toString(),
         "--save=false",
-        chart
+        chart().toString()
     )
-  }
+  })
 }

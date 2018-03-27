@@ -10,7 +10,7 @@ import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
 
-class HelmPluginNonSourceTasksSpec : Spek({
+object HelmPluginNonSourceTasksSpec : Spek({
   val projectDirectory: Path = Files.createTempDirectory(HelmPluginNonSourceTasksSpec::class.simpleName)
   projectDirectory.resolve("build.gradle").also {
     it.toFile().writeText("plugins { id 'ca.cutterslade.helm' }".trimIndent())
@@ -61,7 +61,14 @@ class HelmPluginNonSourceTasksSpec : Spek({
     }
 
     successThenUpToDate(projectDirectory, HelmPlugin.DOWNLOAD_TASK_NAME)
-    successThenUpToDate(projectDirectory, HelmPlugin.INSTALL_TASK_NAME)
-    successThenUpToDate(projectDirectory, HelmPlugin.INITIALIZE_TASK_NAME)
+    successThenUpToDate(projectDirectory, HelmPlugin.INSTALL_TASK_NAME) {
+      projectDirectory.isDir("build", "helm", "install")
+    }
+    successThenUpToDate(projectDirectory, HelmPlugin.INITIALIZE_TASK_NAME) {
+      projectDirectory.isDir("build", "helm", "home", "cache")
+      projectDirectory.isDir("build", "helm", "home", "plugins")
+      projectDirectory.isDir("build", "helm", "home", "repository")
+      projectDirectory.isDir("build", "helm", "home", "starters")
+    }
   }
 })
