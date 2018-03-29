@@ -6,7 +6,6 @@ import org.gradle.testkit.runner.TaskOutcome
 import org.jetbrains.spek.api.dsl.SpecBody
 import org.jetbrains.spek.api.dsl.TestBody
 import org.jetbrains.spek.api.dsl.it
-import java.io.File
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertNotNull
@@ -66,3 +65,19 @@ internal fun Path.isFile(vararg subDirsFile: String): Path =
 
 
 internal fun Path.parentContents() = "$parent contains ${parent.toFile().list().contentToString()}"
+
+internal fun TestBody.withModifiedFile(
+    file: Path,
+    transform: ((String) -> CharSequence),
+    testAction: TestBody.() -> Unit
+) {
+  val original = file.toFile().readLines()
+  file.toFile().writeText(original.joinToString(separator = "\n", transform = transform))
+  try {
+    testAction()
+  }
+  finally {
+    file.toFile().writeText(original.joinToString(separator = "\n"))
+  }
+}
+

@@ -8,11 +8,16 @@ import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPluginConvention
 import org.gradle.api.tasks.*
+import org.gradle.internal.impldep.org.apache.http.client.CredentialsProvider
+import org.gradle.internal.impldep.org.apache.http.client.methods.HttpPut
+import org.gradle.internal.impldep.org.apache.http.entity.FileEntity
+import org.gradle.internal.impldep.org.apache.http.impl.client.HttpClientBuilder
 import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.invoke
 import org.gradle.kotlin.dsl.withConvention
 import org.gradle.process.CommandLineArgumentProvider
 import java.io.File
+import java.net.URI
 import java.net.URL
 import java.nio.file.Files
 import java.util.concurrent.Callable
@@ -31,6 +36,7 @@ open class HelmPlugin : Plugin<Project> {
     val CREATE_TASK_NAME = "createHelmChart"
     val LINT_TASK_NAME = "lintHelmChart"
     val PACKAGE_TASK_NAME = "packageHelmChart"
+    val DEPLOY_TASK_NAME = "deployHelmChart"
 
     val TASKS_NAMES = setOf(
         VERIFY_ARCH_TASK_NAME,
@@ -42,7 +48,8 @@ open class HelmPlugin : Plugin<Project> {
         ENSURE_NO_CHART_TASK_NAME,
         CREATE_TASK_NAME,
         LINT_TASK_NAME,
-        PACKAGE_TASK_NAME
+        PACKAGE_TASK_NAME,
+        DEPLOY_TASK_NAME
     )
 
     val SUPPORTED_ARCHITECTURES = setOf("amd64", "x86_64")
@@ -93,6 +100,9 @@ open class HelmPlugin : Plugin<Project> {
           dependsOn(verifyTask, initTask, tasks["check"], sourceSet.processResourcesTaskName)
           tasks["assemble"].dependsOn(this)
         }
+        DEPLOY_TASK_NAME(DeployTask::class) {
+          dependsOn(packageTask)
+        }
       }
     }
   }
@@ -105,6 +115,7 @@ open class HelmExtension @Inject constructor(private var project: Project, priva
   var chartVersion by DefaultingDelegate { project.version }
   var appVersion by DefaultingDelegate { project.version }
   var chartRepository by DefaultingDelegate { "https://kubernetes-charts.storage.googleapis.com/" }
+  var chartRepositoryCredentials: Callable<CredentialsProvider>? = null
   var chartDir by DefaultingDelegate {
     project.helmSource().resources.srcDirs.first().toPath().resolve(chartName).toFile()
   }
@@ -118,7 +129,7 @@ open class HelmInstallation @Inject constructor(private val project: Project) {
   var workingDir: File by DefaultingDelegate { project.file("${project.buildDir}/helm") }
   var archiveFile: File by DefaultingDelegate { project.file("$workingDir/$helmFilename") }
   var homeDir: File by DefaultingDelegate { project.file("$workingDir/home") }
-  var packageDir: File by DefaultingDelegate { project.file("$homeDir/package") }
+  var packageDir: File by DefaultingDelegate { project.file("$workingDir/package") }
   var installDir: File by DefaultingDelegate { project.file("$workingDir/install") }
   var executable: File by DefaultingDelegate { project.file("$installDir/${os.executable()}") }
 }
@@ -240,6 +251,7 @@ open class InitializeTask : HelmExecTask() {
 open class EnsureNoChartTask : DefaultTask() {
   @Internal
   val chartDir = Callable { helm().chartDir }
+
   @TaskAction
   fun noChart() {
     chartDir().run {
@@ -295,7 +307,7 @@ open class PackageTask : HelmExecTask() {
   @Input
   val chartVersion = Callable { helm().chartVersion }
   @InputDirectory
-  val chart = Callable { helmSource().output.resourcesDir }
+  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(helm().chartName).toFile() }
 
   override fun helmArgs() = listOf(CommandLineArgumentProvider {
     listOf(
@@ -307,4 +319,29 @@ open class PackageTask : HelmExecTask() {
         chart().toString()
     )
   })
+}
+
+open class DeployTask : DefaultTask() {
+  @InputDirectory
+  val home = Callable { helm().install.homeDir }
+  @InputDirectory
+  val packageDir = Callable { helm().install.packageDir }
+  @Input
+  val chartVersion = Callable { helm().chartVersion }
+  @Input
+  val repository = Callable { helm().chartRepository }
+  @Input
+  val repositoryCredentials = Callable { helm().chartRepositoryCredentials?.call() }
+
+  @TaskAction
+  fun deployChart() {
+    val file = project.file("${packageDir()}/${project.name}-${chartVersion()}.tgz")
+    val put = HttpPut(URI("${repository()}/${file.name}"))
+    put.entity = FileEntity(file)
+    val client = repositoryCredentials()
+        ?.let { HttpClientBuilder.create().setDefaultCredentialsProvider(it).build() }
+        ?: HttpClientBuilder.create().build()
+    val response = client.execute(put)
+    if (response.statusLine.statusCode != 201) throw Exception("Unable to deploy helm chart: $response")
+  }
 }

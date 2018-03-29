@@ -15,7 +15,10 @@ object HelmPluginSimpleChartSpec : Spek({
   val settingsFile = projectDirectory.resolve("settings.gradle")
 
   beforeEachTest {
-    buildFile.toFile().writeText("plugins { id 'ca.cutterslade.helm' }\n")
+    buildFile.toFile().writeText("""
+      plugins { id 'ca.cutterslade.helm' }
+      version = '0.1.0'
+      """.trimIndent())
     settingsFile.toFile().writeText("rootProject.name = '$projectName'\n")
   }
 
@@ -50,14 +53,45 @@ object HelmPluginSimpleChartSpec : Spek({
       }
     }
     it("fails validation of a chart with non-semantic version") {
-      projectDirectory.resolve("src/helm/resources/$projectName/Chart.yaml").toFile().run {
-        val chartYaml = readLines().joinToString("\n") { if (it.startsWith("version:")) "" else it }
-        writeText(chartYaml)
-      }
-      buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME).run {
-        taskFailed(HelmPlugin.LINT_TASK_NAME)
-        assertTrue(output.contains("[ERROR] Chart.yaml: version is required"), "Expected version required error")
-      }
+      withModifiedFile(
+          projectDirectory.resolve("src/helm/resources/$projectName/Chart.yaml"),
+          { if (it.startsWith("version:")) "" else it },
+          {
+            buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME).run {
+              taskFailed(HelmPlugin.LINT_TASK_NAME)
+              assertTrue(output.contains("[ERROR] Chart.yaml: version is required"), "Expected version required error")
+            }
+          }
+      )
+    }
+    it("fails validation of a chart with name not matching directory") {
+      withModifiedFile(
+          projectDirectory.resolve("src/helm/resources/$projectName/Chart.yaml"),
+          { if (it.startsWith("name:")) "name: me" else it },
+          {
+            buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME).run {
+              taskFailed(HelmPlugin.LINT_TASK_NAME)
+              assertTrue(output.contains("[ERROR] Chart.yaml: directory name ("), "Expected directory name error")
+            }
+          }
+      )
+    }
+    it("fails validation of a chart with malformed values.yaml") {
+      withModifiedFile(
+          projectDirectory.resolve("src/helm/resources/$projectName/values.yaml"),
+          { if (it.startsWith("image:")) "image: {" else it },
+          {
+            buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME).run {
+              taskFailed(HelmPlugin.LINT_TASK_NAME)
+              assertTrue(output.contains("[ERROR] values.yaml: unable to parse YAML"),
+                  "Expected unable to parse YAML error")
+            }
+          }
+      )
+    }
+
+    successThenUpToDate(projectDirectory, HelmPlugin.PACKAGE_TASK_NAME) {
+      projectDirectory.isFile("build", "helm", "package", "$projectName-0.1.0.tgz")
     }
   }
 })
