@@ -37,6 +37,7 @@ dependencies {
   compile(kotlin("stdlib-jre8"))
   compile(kotlin("reflect"))
   compile(gradleApi())
+  compile("com.github.kittinunf.fuel:fuel:1.12.1")
 
   testCompile(kotlin("test"))
   testCompile("org.jetbrains.spek:spek-junit-platform-engine:1.1.5")
@@ -44,6 +45,7 @@ dependencies {
   add("functionalTestCompile", kotlin("test"))
   add("functionalTestCompile", "org.jetbrains.spek:spek-api:1.1.5")
   add("functionalTestCompile", "com.google.guava:guava:24.1-jre")
+  add("functionalTestCompile", "org.glassfish.grizzly:grizzly-http-server:2.4.0")
   add("functionalTestRuntime", "org.junit.platform:junit-platform-engine:1.1.0")
   add("functionalTestRuntime", "org.jetbrains.spek:spek-junit-platform-engine:1.1.5")
 }

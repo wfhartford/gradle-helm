@@ -1,23 +1,18 @@
 package ca.cutterslade.gradle.helm
 
-import org.gradle.api.DefaultTask
-import org.gradle.api.Plugin
-import org.gradle.api.Project
-import org.gradle.api.Task
+import com.github.kittinunf.fuel.core.Request
+import com.github.kittinunf.fuel.httpPut
+import com.github.kittinunf.result.Result
+import org.gradle.api.*
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPluginConvention
 import org.gradle.api.tasks.*
-import org.gradle.internal.impldep.org.apache.http.client.CredentialsProvider
-import org.gradle.internal.impldep.org.apache.http.client.methods.HttpPut
-import org.gradle.internal.impldep.org.apache.http.entity.FileEntity
-import org.gradle.internal.impldep.org.apache.http.impl.client.HttpClientBuilder
 import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.invoke
 import org.gradle.kotlin.dsl.withConvention
 import org.gradle.process.CommandLineArgumentProvider
 import java.io.File
-import java.net.URI
 import java.net.URL
 import java.nio.file.Files
 import java.util.concurrent.Callable
@@ -115,7 +110,7 @@ open class HelmExtension @Inject constructor(private var project: Project, priva
   var chartVersion by DefaultingDelegate { project.version }
   var appVersion by DefaultingDelegate { project.version }
   var chartRepository by DefaultingDelegate { "https://kubernetes-charts.storage.googleapis.com/" }
-  var chartRepositoryCredentials: Callable<CredentialsProvider>? = null
+  var chartRepositoryRequestConfigurator: Action<Request>? = null
   var chartDir by DefaultingDelegate {
     project.helmSource().resources.srcDirs.first().toPath().resolve(chartName).toFile()
   }
@@ -179,7 +174,7 @@ internal fun Project.helm(): HelmExtension = extensions.getByType(HelmExtension:
 internal fun Task.helm() = project.helm()
 internal fun Project.helmSource(): SourceSet = withJava { sourceSets["helm"] }
 internal fun Task.helmSource() = project.helmSource()
-internal operator fun <T> Callable<T>.invoke() = call()
+internal operator fun <T : Any?> Callable<T>.invoke() = call()
 
 open class DownloadTask : DefaultTask() {
   @OutputFile
@@ -289,8 +284,7 @@ open class LintTask : HelmExecTask() {
       CommandLineArgumentProvider { values().entries.flatMap { (key, value) -> listOf("--set", "$key=$value") } },
       CommandLineArgumentProvider {
         valuesFile().flatMap { file ->
-          listOf("--values",
-              project.file(file).toString())
+          listOf("--values", project.file(file).toString())
         }
       },
       CommandLineArgumentProvider { listOf(chart().toString()) }
@@ -323,25 +317,30 @@ open class PackageTask : HelmExecTask() {
 
 open class DeployTask : DefaultTask() {
   @InputDirectory
-  val home = Callable { helm().install.homeDir }
-  @InputDirectory
   val packageDir = Callable { helm().install.packageDir }
   @Input
   val chartVersion = Callable { helm().chartVersion }
   @Input
   val repository = Callable { helm().chartRepository }
   @Input
-  val repositoryCredentials = Callable { helm().chartRepositoryCredentials?.call() }
+  @Optional
+  val configurator = Callable { helm().chartRepositoryRequestConfigurator }
 
   @TaskAction
   fun deployChart() {
     val file = project.file("${packageDir()}/${project.name}-${chartVersion()}.tgz")
-    val put = HttpPut(URI("${repository()}/${file.name}"))
-    put.entity = FileEntity(file)
-    val client = repositoryCredentials()
-        ?.let { HttpClientBuilder.create().setDefaultCredentialsProvider(it).build() }
-        ?: HttpClientBuilder.create().build()
-    val response = client.execute(put)
-    if (response.statusLine.statusCode != 201) throw Exception("Unable to deploy helm chart: $response")
+    val request = "${repository()}/${file.name}".httpPut()
+    request.body(file.readBytes())
+    configurator()?.execute(request)
+    request.response().let { (_, response, result) ->
+      when (result) {
+        is Result.Failure -> {
+          throw Exception("Unable to deploy helm chart: $response")
+        }
+        is Result.Success -> {
+          println("Deployed: $response")
+        }
+      }
+    }
   }
 }
