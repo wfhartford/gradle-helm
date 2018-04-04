@@ -37,7 +37,7 @@ dependencies {
   compile(kotlin("stdlib-jre8"))
   compile(kotlin("reflect"))
   compile(gradleApi())
-  compile("com.github.kittinunf.fuel:fuel:1.12.1")
+  compile("com.squareup.okhttp3:okhttp:3.10.0")
 
   testCompile(kotlin("test"))
   testCompile("org.jetbrains.spek:spek-junit-platform-engine:1.1.5")

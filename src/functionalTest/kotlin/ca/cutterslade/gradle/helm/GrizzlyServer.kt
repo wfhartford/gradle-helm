@@ -32,22 +32,25 @@ class GrizzlyServer : AutoCloseable {
   }
 }
 
-fun main(args: Array<String>) {
-  GrizzlyServer().use {
-    val port = it.start()
-    println("Listening at http://localhost:$port")
-    readLine()
-  }
-}
-
 data class RequestDetails(
     val method: Method,
     val host: String,
     val path: String,
-    val contentLength: Long
+    val contentLength: Long,
+    val headers: List<Pair<String, String>>
 ) {
   constructor(request: Request) :
-      this(request.method, request.getHeader(Header.Host), request.httpHandlerPath, request.contentLengthLong)
+      this(
+          request.method,
+          request.getHeader(Header.Host),
+          request.httpHandlerPath,
+          request.contentLengthLong,
+          request.headerNames.flatMap { name ->
+            request.getHeaders(name).map { name to it }
+          }
+      )
+
+  fun hasHeader(name: String) = headers.any { it.first.toLowerCase() == name.toLowerCase() }
 }
 
 class TracingHandler : HttpHandler() {
@@ -59,15 +62,16 @@ class TracingHandler : HttpHandler() {
   }
 
   override fun service(request: Request, response: Response) = response.run {
+    val details = RequestDetails(request)
+    println("Servicing request: $details")
+    requests += details
     if (!requireAuth || request.getHeader(Header.Authorization) == authorizedHeader) {
-      val details = RequestDetails(request)
-      requests += details
       contentType = "text/plain"
       contentLength = 2
       writer.write("ok")
     }
     else {
-      setHeader(Header.WWWAuthenticate, "Basic realm=\"test\" charset=\"UTF-8\"")
+      setHeader(Header.WWWAuthenticate, "Basic realm=\"test\"")
       setStatus(HttpStatus.UNAUTHORIZED_401)
     }
   }

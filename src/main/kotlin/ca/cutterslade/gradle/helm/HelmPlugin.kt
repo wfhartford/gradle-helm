@@ -1,13 +1,28 @@
 package ca.cutterslade.gradle.helm
 
-import com.github.kittinunf.fuel.core.Request
-import com.github.kittinunf.fuel.httpPut
-import com.github.kittinunf.result.Result
-import org.gradle.api.*
+import okhttp3.Credentials
+import okhttp3.OkHttpClient
+import okhttp3.Request
+import okhttp3.RequestBody
+import org.gradle.api.Action
+import org.gradle.api.DefaultTask
+import org.gradle.api.Plugin
+import org.gradle.api.Project
+import org.gradle.api.Task
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPluginConvention
-import org.gradle.api.tasks.*
+import org.gradle.api.tasks.Copy
+import org.gradle.api.tasks.Exec
+import org.gradle.api.tasks.Input
+import org.gradle.api.tasks.InputDirectory
+import org.gradle.api.tasks.InputFile
+import org.gradle.api.tasks.InputFiles
+import org.gradle.api.tasks.Internal
+import org.gradle.api.tasks.OutputDirectory
+import org.gradle.api.tasks.OutputFile
+import org.gradle.api.tasks.SourceSet
+import org.gradle.api.tasks.TaskAction
 import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.invoke
 import org.gradle.kotlin.dsl.withConvention
@@ -105,12 +120,14 @@ open class HelmPlugin : Plugin<Project> {
 
 open class HelmExtension @Inject constructor(private var project: Project, private var objectFactory: ObjectFactory) {
   val install by lazy { objectFactory.newInstance(HelmInstallation::class.java, project) }
+  fun install(action: Action<HelmInstallation>) = action.execute(install)
   val lint by lazy { objectFactory.newInstance(HelmLint::class.java, project) }
+  fun lint(action: Action<HelmLint>) = action.execute(lint)
+  val repository by lazy { objectFactory.newInstance(HelmRepo::class.java) }
+  fun repository(action: Action<HelmRepo>) = action.execute(repository)
   var chartName by DefaultingDelegate { project.name }
   var chartVersion by DefaultingDelegate { project.version }
   var appVersion by DefaultingDelegate { project.version }
-  var chartRepository by DefaultingDelegate { "https://kubernetes-charts.storage.googleapis.com/" }
-  var chartRepositoryRequestConfigurator: Action<Request>? = null
   var chartDir by DefaultingDelegate {
     project.helmSource().resources.srcDirs.first().toPath().resolve(chartName).toFile()
   }
@@ -133,6 +150,15 @@ open class HelmLint @Inject constructor(private val project: Project) {
   var strict: Boolean by DefaultingDelegate { false }
   var values: Map<String, String> by DefaultingDelegate { mapOf<String, String>() }
   var valuesFiles: List<Any> by DefaultingDelegate { listOf<Any>() }
+}
+
+open class HelmRepo @Inject constructor() {
+  var url by DefaultingDelegate { "https://kubernetes-charts.storage.googleapis.com/" }
+  var username: String? = null
+  var password: String? = null
+  var authRealm: String? = null
+  var requestHeaders by DefaultingDelegate { listOf<List<String>>() }
+  var clientConfigurator by DefaultingDelegate { Action<OkHttpClient.Builder> {} }
 }
 
 class DefaultingDelegate<T>(private val supplier: () -> T) {
@@ -321,26 +347,43 @@ open class DeployTask : DefaultTask() {
   @Input
   val chartVersion = Callable { helm().chartVersion }
   @Input
-  val repository = Callable { helm().chartRepository }
-  @Input
-  @Optional
-  val configurator = Callable { helm().chartRepositoryRequestConfigurator }
+  val repository = Callable { helm().repository }
 
   @TaskAction
   fun deployChart() {
+    val repo = repository()
     val file = project.file("${packageDir()}/${project.name}-${chartVersion()}.tgz")
-    val request = "${repository()}/${file.name}".httpPut()
-    request.body(file.readBytes())
-    configurator()?.execute(request)
-    request.response().let { (_, response, result) ->
-      when (result) {
-        is Result.Failure -> {
-          throw Exception("Unable to deploy helm chart: $response")
-        }
-        is Result.Success -> {
-          println("Deployed: $response")
+    val url = "${repo.url}/${file.name}"
+    val clientBuilder = OkHttpClient.Builder()
+    val user = repo.username
+    val pass = repo.password
+    val realm = repo.authRealm
+    if (user != null && pass != null) {
+      clientBuilder.authenticator { _, response ->
+        val challenges = response.challenges()
+        when {
+          null != response.request().header("Authorization") -> null
+          challenges.isEmpty() -> null
+          else -> response.request().newBuilder()
+              .header(
+                  "Authorization",
+                  when {
+                    challenges.any { it.scheme() == "Basic" && (null == realm || realm == it.realm()) } -> Credentials.basic(user, pass)
+                    else -> throw Exception("Unsupported Challenges: $challenges")
+                  }
+              )
+              .build().also { println("Authenticating with $it") }
         }
       }
     }
+    repo.clientConfigurator.execute(clientBuilder)
+    val client = clientBuilder.build()
+    val request = Request.Builder()
+        .url(url)
+        .put(RequestBody.create(null, file))
+        .also { repo.requestHeaders.forEach { (name, value) -> it.addHeader(name, value) } }
+        .build()
+    val response = client.newCall(request).execute()
+    if (!response.isSuccessful) throw Exception("Unable to deploy helm chart: $response")
   }
 }

@@ -8,6 +8,7 @@ import org.jetbrains.spek.api.dsl.it
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 object HelmPluginSimpleChartSpec : Spek({
@@ -28,7 +29,7 @@ object HelmPluginSimpleChartSpec : Spek({
     buildFile.toFile().writeText("""
       plugins { id 'ca.cutterslade.helm' }
       version = '$projectVersion'
-      helm { chartRepository 'http://localhost:${server().port}' }
+      helm { repository { url 'http://localhost:${server().port}' } }
       """.trimIndent())
     settingsFile.toFile().writeText("rootProject.name = '$projectName'\n")
   }
@@ -130,18 +131,22 @@ object HelmPluginSimpleChartSpec : Spek({
       buildTaskForFailure(projectDirectory, HelmPlugin.DEPLOY_TASK_NAME).run {
         taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME)
         taskFailed(HelmPlugin.DEPLOY_TASK_NAME)
-        assertTrue(output.contains("Response : Unauthorized"), "Build output should contain 'Response : Unauthorized'")
+        assertTrue(output.contains("code=401, message=Unauthorized"),
+            "Build output should contain 'Response : Unauthorized'")
       }
     }
 
-    it("can deploy a chart if server requires authentication and correct credentials provided") {
+    it("can deploy a chart if server requires authentication and correct credentials provided no realm") {
       withModifiedFile(
           projectDirectory.resolve("build.gradle"),
           {
             if (it.startsWith("helm")) """
             |helm {
-            |  chartRepository 'http://localhost:${server().port}'
-            |  chartRepositoryRequestConfigurator { it.authenticate('user', 'pass') }
+            |  repository {
+            |    url 'http://localhost:${server().port}'
+            |    username 'user'
+            |    password 'pass'
+            |  }
             |}
             """.trimMargin()
             else it
@@ -151,8 +156,97 @@ object HelmPluginSimpleChartSpec : Spek({
             buildTask(projectDirectory, HelmPlugin.DEPLOY_TASK_NAME).run {
               taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME)
               taskSuccess(HelmPlugin.DEPLOY_TASK_NAME)
+              server().handler.let {
+                assertEquals(2, it.requests.size, "Required two requests")
+                assertFalse(it.requests[0].hasHeader("Authorization"),
+                    "First request has no authorization: ${it.requests[0]}")
+                assertTrue(it.requests[1].hasHeader("Authorization"),
+                    "Second request has authorization: ${it.requests[1]}")
+                it.requests.forEachIndexed { index, request ->
+                  assertEquals(Method.PUT, request.method, "Deploy request[$index] method: $request")
+                  assertEquals("/$projectName-$projectVersion.tgz",
+                      request.path,
+                      "Deploy request[$index] path: $request")
+                  projectDirectory.isFile("build", "helm", "package", "$projectName-0.1.0.tgz").run {
+                    assertEquals(toFile().length(),
+                        request.contentLength,
+                        "Deployed package size in request[$index]: $request")
+                  }
+                }
+              }
             }
           })
+    }
+    it("can deploy a chart if server requires authentication and correct credentials provided with realm") {
+      withModifiedFile(
+          projectDirectory.resolve("build.gradle"),
+          {
+            if (it.startsWith("helm")) """
+            |helm {
+            |  repository {
+            |    url 'http://localhost:${server().port}'
+            |    username 'user'
+            |    password 'pass'
+            |    authRealm 'test'
+            |  }
+            |}
+            """.trimMargin()
+            else it
+          },
+          {
+            server().handler.requireAuth = true
+            buildTask(projectDirectory, HelmPlugin.DEPLOY_TASK_NAME).run {
+              taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME)
+              taskSuccess(HelmPlugin.DEPLOY_TASK_NAME)
+              server().handler.let {
+                assertEquals(2, it.requests.size, "Required two requests")
+                assertFalse(it.requests[0].hasHeader("Authorization"),
+                    "First request has no authorization: ${it.requests[0]}")
+                assertTrue(it.requests[1].hasHeader("Authorization"),
+                    "Second request has authorization: ${it.requests[1]}")
+                it.requests.forEachIndexed { index, request ->
+                  assertEquals(Method.PUT, request.method, "Deploy request[$index] method: $request")
+                  assertEquals("/$projectName-$projectVersion.tgz",
+                      request.path,
+                      "Deploy request[$index] path: $request")
+                  projectDirectory.isFile("build", "helm", "package", "$projectName-0.1.0.tgz").run {
+                    assertEquals(toFile().length(),
+                        request.contentLength,
+                        "Deployed package size in request[$index]: $request")
+                  }
+                }
+              }
+            }
+          })
+      it("cannot deploy a chart if server requires authentication and correct credentials provided with wrong realm") {
+        withModifiedFile(
+            projectDirectory.resolve("build.gradle"),
+            {
+              if (it.startsWith("helm")) """
+            |helm {
+            |  repository {
+            |    url 'http://localhost:${server().port}'
+            |    username 'user'
+            |    password 'pass'
+            |    authRealm 'bunk'
+            |  }
+            |}
+            """.trimMargin()
+              else it
+            },
+            {
+              server().handler.requireAuth = true
+              buildTaskForFailure(projectDirectory, HelmPlugin.DEPLOY_TASK_NAME).run {
+                taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME)
+                taskFailed(HelmPlugin.DEPLOY_TASK_NAME)
+                server().handler.let {
+                  assertEquals(1, it.requests.size, "Executed one request")
+                  assertFalse(it.requests[0].hasHeader("Authorization"),
+                      "Request has no authorization: ${it.requests[0]}")
+                }
+              }
+            })
+      }
     }
   }
 })
