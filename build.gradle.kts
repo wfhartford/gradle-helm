@@ -1,5 +1,7 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
 import org.junit.platform.gradle.plugin.JUnitPlatformPlugin
+import java.time.format.DateTimeFormatter
+import java.time.LocalDateTime
 
 group = "ca.cutterslade.gradle"
 version = "1.0.0-SNAPSHOT"
@@ -19,6 +21,7 @@ plugins {
   `kotlin-dsl`
   `junit-test-suite`
   kotlin("jvm") version "1.2.31"
+  id("com.gradle.plugin-publish") version "0.9.10"
 }
 
 java.sourceSets.create("functionalTest") {
@@ -59,6 +62,23 @@ gradlePlugin {
   }
   testSourceSets(java.sourceSets["functionalTest"])
 }
+
+pluginBundle {
+  website = "https://github.com/wfhartford/gradle-helm"
+  vcsUrl = "https://github.com/wfhartford/gradle-helm.git"
+  tags = listOf("helm")
+  description = "Plugin supporting basic helm commands for a gradle build."
+
+  (plugins) {
+    "helm" {
+      id = "ca.cutterslade.helm"
+      displayName = "Gradle Helm Plugin"
+      version = project.version.toString().replace("-SNAPSHOT", "-${DateTimeFormatter.ofPattern("uuuuMMddHHmmss").format(LocalDateTime.now())}")
+    }
+  }
+}
+
+tasks["publishPlugins"].dependsOn(tasks["check"])
 
 tasks {
   "functionalTest"(Test::class) {
