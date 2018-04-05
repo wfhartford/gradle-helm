@@ -2,6 +2,7 @@ package ca.cutterslade.gradle.helm
 
 import com.google.common.collect.Sets
 import com.google.common.io.MoreFiles
+import com.google.common.io.RecursiveDeleteOption
 import org.gradle.testkit.runner.GradleRunner
 import org.jetbrains.spek.api.Spek
 import org.jetbrains.spek.api.dsl.describe
