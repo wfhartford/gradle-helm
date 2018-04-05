@@ -16,7 +16,7 @@ object HelmPluginNonSourceTasksSpec : Spek({
     it.toFile().writeText("plugins { id 'ca.cutterslade.helm' }".trimIndent())
   }
   afterGroup {
-    MoreFiles.deleteRecursively(projectDirectory)
+    MoreFiles.deleteRecursively(projectDirectory, RecursiveDeleteOption.ALLOW_INSECURE)
   }
 
   describe("The helm plugin") {
