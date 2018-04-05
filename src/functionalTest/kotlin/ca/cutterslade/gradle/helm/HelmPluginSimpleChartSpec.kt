@@ -1,6 +1,7 @@
 package ca.cutterslade.gradle.helm
 
 import com.google.common.io.MoreFiles
+import com.google.common.io.RecursiveDeleteOption
 import org.glassfish.grizzly.http.Method
 import org.jetbrains.spek.api.Spek
 import org.jetbrains.spek.api.dsl.describe
@@ -41,7 +42,7 @@ object HelmPluginSimpleChartSpec : Spek({
   afterGroup {
     server().close()
     _server = null
-    MoreFiles.deleteRecursively(projectDirectory)
+    MoreFiles.deleteRecursively(projectDirectory, RecursiveDeleteOption.ALLOW_INSECURE)
   }
 
   describe("The helm plugin") {
