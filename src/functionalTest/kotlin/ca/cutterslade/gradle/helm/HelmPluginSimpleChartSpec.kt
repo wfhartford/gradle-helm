@@ -41,7 +41,7 @@ object HelmPluginSimpleChartSpec : Spek({
   afterGroup {
     server().close()
     _server = null
-    MoreFiles.deleteRecursively(projectDirectory)
+    MoreFiles.deleteRecursively(projectDirectory, RecursiveDeleteOption.ALLOW_INSECURE)
   }
 
   describe("The helm plugin") {
