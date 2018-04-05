@@ -176,7 +176,7 @@ enum class OperatingSystem(
 ) {
   WINDOWS("windows", executableSuffix = ".exe"),
   LINUX("linux"),
-  MAC("max os x", filenamePart = "darwin");
+  MAC("mac os x", filenamePart = "darwin");
 
   companion object {
     fun detect() = System.getProperty("os.name").toLowerCase().let { osName ->
