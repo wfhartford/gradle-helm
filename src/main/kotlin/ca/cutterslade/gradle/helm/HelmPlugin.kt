@@ -167,7 +167,7 @@ open class HelmExtension @Inject constructor(private val project: Project, priva
 open class HelmChart(val name: String, private val project: Project) {
   var chartVersion by DefaultingDelegate { project.version.toString() }
   var appVersion by DefaultingDelegate { project.version.toString() }
-  var chartDir: File by DefaultingDelegate {
+  var chartDir: Any by DefaultingDelegate {
     project.helmSource().resources.srcDirs.first().toPath().resolve(name).toFile()
   }
 
@@ -319,7 +319,7 @@ abstract class HelmChartExecTask : HelmExecTask() {
   @Input
   val appVersion = Callable { taskChart.appVersion }
   @Internal
-  open val chartDir = Callable { taskChart.chartDir }
+  open val chartDir = Callable { project.file(taskChart.chartDir) }
 }
 
 @Suppress("MemberVisibilityCanBePrivate")
@@ -327,7 +327,7 @@ open class EnsureNoChartTask : DefaultTask() {
   @Internal
   lateinit var taskChart: HelmChart
   @Input
-  val chartDir = Callable { taskChart.chartDir }
+  val chartDir = Callable { project.file(taskChart.chartDir) }
 
   @TaskAction
   fun noChart() {
