@@ -21,6 +21,13 @@ object HelmPluginSimpleChartSpec : Spek({
   var _server: GrizzlyServer? = null
   fun server() = _server ?: throw IllegalStateException("_server is null")
 
+  data class ChartBasics(val name: String, val version: String)
+
+  val charts = listOf(
+      ChartBasics(projectName, projectVersion),
+      ChartBasics("other-test-chart", "1.0.0")
+  )
+
   beforeGroup {
     _server = GrizzlyServer()
     server().start()
@@ -28,10 +35,18 @@ object HelmPluginSimpleChartSpec : Spek({
 
   beforeEachTest {
     buildFile.toFile().writeText("""
-      plugins { id 'ca.cutterslade.helm' }
-      version = '$projectVersion'
-      helm { repository { url 'http://localhost:${server().port}' } }
-      """.trimIndent())
+      |plugins { id 'ca.cutterslade.helm' }
+      |version = '$projectVersion'
+      |helm {
+      |  repository { url 'http://localhost:${server().port}' }
+      |}
+      |charts {
+      |${charts.joinToString(
+        separator = "\n",
+        transform = { "  '${it.name}' { chartVersion = '${it.version}' }" }
+    )}
+      |}
+      """.trimMargin())
     settingsFile.toFile().writeText("rootProject.name = '$projectName'\n")
   }
 
@@ -45,208 +60,201 @@ object HelmPluginSimpleChartSpec : Spek({
     MoreFiles.deleteRecursively(projectDirectory, RecursiveDeleteOption.ALLOW_INSECURE)
   }
 
+  fun String.task(chart: ChartBasics) = HelmPlugin.chartTaskName(this, chart.name)
+
   describe("The helm plugin") {
-    it("can create a chart") {
-      buildTask(projectDirectory, HelmPlugin.CREATE_TASK_NAME).run {
-        taskSuccess(HelmPlugin.ENSURE_NO_CHART_TASK_NAME)
-        taskSuccess(HelmPlugin.INITIALIZE_TASK_NAME)
-        taskSuccess(HelmPlugin.CREATE_TASK_NAME)
-      }
-
-      projectDirectory.isDir("build", "helm", "install")
-      projectDirectory.isDir("build", "helm", "home")
-      projectDirectory.isFile("src", "helm", "resources", projectName, "Chart.yaml").run {
-        assertTrue(Files.lines(this).anyMatch { Regex("name: \\Q$projectName\\E").matches(it) },
-            "Chart.yaml file missing expected line 'name: $projectName'")
-      }
-    }
-    it("fails to create a chart in an existing directory") {
-      buildTaskForFailure(projectDirectory, HelmPlugin.CREATE_TASK_NAME).run {
-        taskFailed(HelmPlugin.ENSURE_NO_CHART_TASK_NAME)
-        assertTrue(output.contains("Cannot create chart when exists: '"))
-      }
-    }
-    it("validates a chart") {
-      buildTask(projectDirectory, HelmPlugin.LINT_TASK_NAME).run {
-        taskSuccess(HelmPlugin.LINT_TASK_NAME)
-      }
-    }
-    it("fails validation of a chart with non-semantic version") {
-      withModifiedFile(
-          projectDirectory.resolve("src/helm/resources/$projectName/Chart.yaml"),
-          { if (it.startsWith("version:")) "" else it },
-          {
-            buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME).run {
-              taskFailed(HelmPlugin.LINT_TASK_NAME)
-              assertTrue(output.contains("[ERROR] Chart.yaml: version is required"), "Expected version required error")
-            }
-          }
-      )
-    }
-    it("fails validation of a chart with name not matching directory") {
-      withModifiedFile(
-          projectDirectory.resolve("src/helm/resources/$projectName/Chart.yaml"),
-          { if (it.startsWith("name:")) "name: me" else it },
-          {
-            buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME).run {
-              taskFailed(HelmPlugin.LINT_TASK_NAME)
-              assertTrue(output.contains("[ERROR] Chart.yaml: directory name ("), "Expected directory name error")
-            }
-          }
-      )
-    }
-    it("fails validation of a chart with malformed values.yaml") {
-      withModifiedFile(
-          projectDirectory.resolve("src/helm/resources/$projectName/values.yaml"),
-          { if (it.startsWith("image:")) "image: {" else it },
-          {
-            buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME).run {
-              taskFailed(HelmPlugin.LINT_TASK_NAME)
-              assertTrue(output.contains("[ERROR] values.yaml: unable to parse YAML"),
-                  "Expected unable to parse YAML error")
-            }
-          }
-      )
-    }
-
-    successThenUpToDate(projectDirectory, HelmPlugin.PACKAGE_TASK_NAME) {
-      projectDirectory.isFile("build", "helm", "package", "$projectName-0.1.0.tgz")
-    }
-
-    it("can deploy a chart") {
-      buildTask(projectDirectory, HelmPlugin.DEPLOY_TASK_NAME).run {
-        taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME)
-        taskSuccess(HelmPlugin.DEPLOY_TASK_NAME)
-        server().handler.let {
-          assertEquals(1, it.requests.size, "Deployed with a single request")
-          assertEquals(Method.PUT, it.requests[0].method, "Deploy request method")
-          assertEquals("/$projectName-$projectVersion.tgz", it.requests[0].path, "Deploy request path")
-          projectDirectory.isFile("build", "helm", "package", "$projectName-0.1.0.tgz").run {
-            assertEquals(toFile().length(), it.requests[0].contentLength, "Deployed package size")
-          }
+    it("generates all tasks for each chart") {
+      buildTask(projectDirectory, "tasks", "--all").run {
+        HelmPlugin.CONSTANT_TASKS_NAMES.forEach {
+          assertTrue(output.contains(it), "list of tasks includes $it")
+        }
+        HelmPlugin.VARIABLE_TASK_NAME_FORMATS.forEach { format ->
+          charts.forEach { format.task(it).let { assertTrue(output.contains(it), "list of tasks includes $it") } }
         }
       }
     }
-    it("cannot deploy a chart if server requires authentication and none provided") {
-      server().handler.requireAuth = true
-      buildTaskForFailure(projectDirectory, HelmPlugin.DEPLOY_TASK_NAME).run {
-        taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME)
-        taskFailed(HelmPlugin.DEPLOY_TASK_NAME)
-        assertTrue(output.contains("code=401, message=Unauthorized"),
-            "Build output should contain 'Response : Unauthorized'")
-      }
-    }
 
-    it("can deploy a chart if server requires authentication and correct credentials provided no realm") {
-      withModifiedFile(
-          projectDirectory.resolve("build.gradle"),
-          {
-            if (it.startsWith("helm")) """
-            |helm {
-            |  repository {
-            |    url 'http://localhost:${server().port}'
-            |    username 'user'
-            |    password 'pass'
-            |  }
-            |}
-            """.trimMargin()
-            else it
-          },
-          {
-            server().handler.requireAuth = true
-            buildTask(projectDirectory, HelmPlugin.DEPLOY_TASK_NAME).run {
-              taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME)
-              taskSuccess(HelmPlugin.DEPLOY_TASK_NAME)
-              server().handler.let {
-                assertEquals(2, it.requests.size, "Required two requests")
-                assertFalse(it.requests[0].hasHeader("Authorization"),
-                    "First request has no authorization: ${it.requests[0]}")
-                assertTrue(it.requests[1].hasHeader("Authorization"),
-                    "Second request has authorization: ${it.requests[1]}")
-                it.requests.forEachIndexed { index, request ->
-                  assertEquals(Method.PUT, request.method, "Deploy request[$index] method: $request")
-                  assertEquals("/$projectName-$projectVersion.tgz",
-                      request.path,
-                      "Deploy request[$index] path: $request")
-                  projectDirectory.isFile("build", "helm", "package", "$projectName-0.1.0.tgz").run {
-                    assertEquals(toFile().length(),
-                        request.contentLength,
-                        "Deployed package size in request[$index]: $request")
+    charts.forEach { chart ->
+      group("chart named ${chart.name}") {
+        doubleSuccess(projectDirectory, HelmPlugin.ENSURE_NO_CHART_TASK_NAME_FORMAT.task(chart))
+
+        it("can create a chart") {
+          buildTask(projectDirectory, HelmPlugin.CREATE_TASK_NAME_FORMAT.task(chart)).run {
+            taskSuccess(HelmPlugin.ENSURE_NO_CHART_TASK_NAME_FORMAT.task(chart))
+            taskSuccessOrUpToDate(HelmPlugin.INITIALIZE_TASK_NAME)
+            taskSuccess(HelmPlugin.CREATE_TASK_NAME_FORMAT.task(chart))
+          }
+
+          projectDirectory.isDir("build", "helm", "install")
+          projectDirectory.isDir("build", "helm", "home")
+          projectDirectory.isFile("src", "helm", "resources", chart.name, "Chart.yaml").run {
+            assertTrue(Files.lines(this).anyMatch { Regex("name: \\Q${chart.name}\\E").matches(it) },
+                "Chart.yaml file missing expected line 'name: ${chart.name}'")
+          }
+        }
+
+        it("fails to create a chart in an existing directory") {
+          buildTaskForFailure(projectDirectory, HelmPlugin.CREATE_TASK_NAME_FORMAT.task(chart)).run {
+            taskFailed(HelmPlugin.ENSURE_NO_CHART_TASK_NAME_FORMAT.task(chart))
+            assertTrue(output.contains("Cannot create chart when exists: '"))
+          }
+        }
+
+        it("validates a chart") {
+          buildTask(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+            taskSuccess(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+          }
+        }
+
+        it("fails validation of a chart with non-semantic version") {
+          withModifiedFile(
+              projectDirectory.resolve("src/helm/resources/${chart.name}/Chart.yaml"),
+              removeLine(Regex("version:.*")),
+              {
+                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                  assertTrue(output.contains("[ERROR] Chart.yaml: version is required"),
+                      "Expected version required error")
+                }
+              }
+          )
+        }
+
+        it("fails validation of a chart with name not matching directory") {
+          withModifiedFile(
+              projectDirectory.resolve("src/helm/resources/${chart.name}/Chart.yaml"),
+              replaceLine(Regex("name:.*"), "name: me"),
+              {
+                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                  assertTrue(output.contains("[ERROR] Chart.yaml: directory name ("), "Expected directory name error")
+                }
+              }
+          )
+        }
+
+        it("fails validation of a chart with malformed values.yaml") {
+          withModifiedFile(
+              projectDirectory.resolve("src/helm/resources/${chart.name}/values.yaml"),
+              replaceLine(Regex("image:.*"), "image: {"),
+              {
+                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                  assertTrue(output.contains("[ERROR] values.yaml: unable to parse YAML"),
+                      "Expected unable to parse YAML error")
+                }
+              }
+          )
+        }
+
+        successThenUpToDate(projectDirectory, HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart)) {
+          projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz")
+        }
+
+        it("can publish a chart") {
+          buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+            taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+            taskSuccess(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+            server().handler.let {
+              assertEquals(1, it.requests.size, "Published with a single request")
+              assertEquals(Method.PUT, it.requests[0].method, "Publish request method")
+              assertEquals("/${chart.name}-${chart.version}.tgz", it.requests[0].path, "Publish request path")
+              projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz").run {
+                assertEquals(toFile().length(), it.requests[0].contentLength, "Published package size")
+              }
+            }
+          }
+        }
+        it("cannot publish a chart if server requires authentication and none provided") {
+          server().handler.requireAuth = true
+          buildTaskForFailure(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+            taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+            taskFailed(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+            assertTrue(output.contains("code=401, message=Unauthorized"),
+                "Build output should contain 'Response : Unauthorized'")
+          }
+        }
+
+        it("can publish a chart if server requires authentication and correct credentials provided no realm") {
+          withModifiedFile(
+              projectDirectory.resolve("build.gradle"),
+              repositoryTransform(server()),
+              {
+                server().handler.requireAuth = true
+                buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+                  taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+                  taskSuccess(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+                  server().handler.let {
+                    assertEquals(2, it.requests.size, "Required two requests")
+                    assertFalse(it.requests[0].hasHeader("Authorization"),
+                        "First request has no authorization: ${it.requests[0]}")
+                    assertTrue(it.requests[1].hasHeader("Authorization"),
+                        "Second request has authorization: ${it.requests[1]}")
+                    it.requests.forEachIndexed { index, request ->
+                      assertEquals(Method.PUT, request.method, "Publish request[$index] method: $request")
+                      assertEquals("/${chart.name}-${chart.version}.tgz",
+                          request.path,
+                          "Publish request[$index] path: $request")
+                      projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz").run {
+                        assertEquals(toFile().length(),
+                            request.contentLength,
+                            "Published package size in request[$index]: $request")
+                      }
+                    }
                   }
                 }
               }
-            }
-          })
-    }
-    it("can deploy a chart if server requires authentication and correct credentials provided with realm") {
-      withModifiedFile(
-          projectDirectory.resolve("build.gradle"),
-          {
-            if (it.startsWith("helm")) """
-            |helm {
-            |  repository {
-            |    url 'http://localhost:${server().port}'
-            |    username 'user'
-            |    password 'pass'
-            |    authRealm 'test'
-            |  }
-            |}
-            """.trimMargin()
-            else it
-          },
-          {
-            server().handler.requireAuth = true
-            buildTask(projectDirectory, HelmPlugin.DEPLOY_TASK_NAME).run {
-              taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME)
-              taskSuccess(HelmPlugin.DEPLOY_TASK_NAME)
-              server().handler.let {
-                assertEquals(2, it.requests.size, "Required two requests")
-                assertFalse(it.requests[0].hasHeader("Authorization"),
-                    "First request has no authorization: ${it.requests[0]}")
-                assertTrue(it.requests[1].hasHeader("Authorization"),
-                    "Second request has authorization: ${it.requests[1]}")
-                it.requests.forEachIndexed { index, request ->
-                  assertEquals(Method.PUT, request.method, "Deploy request[$index] method: $request")
-                  assertEquals("/$projectName-$projectVersion.tgz",
-                      request.path,
-                      "Deploy request[$index] path: $request")
-                  projectDirectory.isFile("build", "helm", "package", "$projectName-0.1.0.tgz").run {
-                    assertEquals(toFile().length(),
-                        request.contentLength,
-                        "Deployed package size in request[$index]: $request")
+          )
+        }
+        it("can publish a chart if server requires authentication and correct credentials provided with realm") {
+          withModifiedFile(
+              projectDirectory.resolve("build.gradle"),
+              repositoryTransform(server(), realm = "test"),
+              {
+                server().handler.requireAuth = true
+                buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+                  taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+                  taskSuccess(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+                  server().handler.let {
+                    assertEquals(2, it.requests.size, "Required two requests")
+                    assertFalse(it.requests[0].hasHeader("Authorization"),
+                        "First request has no authorization: ${it.requests[0]}")
+                    assertTrue(it.requests[1].hasHeader("Authorization"),
+                        "Second request has authorization: ${it.requests[1]}")
+                    it.requests.forEachIndexed { index, request ->
+                      assertEquals(Method.PUT, request.method, "Publish request[$index] method: $request")
+                      assertEquals("/${chart.name}-${chart.version}.tgz",
+                          request.path,
+                          "Publish request[$index] path: $request")
+                      projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz").run {
+                        assertEquals(toFile().length(),
+                            request.contentLength,
+                            "Published package size in request[$index]: $request")
+                      }
+                    }
                   }
                 }
               }
-            }
-          })
-      it("cannot deploy a chart if server requires authentication and correct credentials provided with wrong realm") {
-        withModifiedFile(
-            projectDirectory.resolve("build.gradle"),
-            {
-              if (it.startsWith("helm")) """
-            |helm {
-            |  repository {
-            |    url 'http://localhost:${server().port}'
-            |    username 'user'
-            |    password 'pass'
-            |    authRealm 'bunk'
-            |  }
-            |}
-            """.trimMargin()
-              else it
-            },
-            {
-              server().handler.requireAuth = true
-              buildTaskForFailure(projectDirectory, HelmPlugin.DEPLOY_TASK_NAME).run {
-                taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME)
-                taskFailed(HelmPlugin.DEPLOY_TASK_NAME)
-                server().handler.let {
-                  assertEquals(1, it.requests.size, "Executed one request")
-                  assertFalse(it.requests[0].hasHeader("Authorization"),
-                      "Request has no authorization: ${it.requests[0]}")
+          )
+        }
+        it("cannot publish a chart if server requires authentication and correct credentials provided with wrong realm") {
+          withModifiedFile(
+              projectDirectory.resolve("build.gradle"),
+              repositoryTransform(server(), realm = "bunk"),
+              {
+                server().handler.requireAuth = true
+                buildTaskForFailure(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+                  taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+                  taskFailed(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+                  server().handler.let {
+                    assertEquals(1, it.requests.size, "Executed one request")
+                    assertFalse(it.requests[0].hasHeader("Authorization"),
+                        "Request has no authorization: ${it.requests[0]}")
+                  }
                 }
               }
-            })
+          )
+        }
       }
     }
   }

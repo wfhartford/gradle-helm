@@ -63,7 +63,6 @@ class TracingHandler : HttpHandler() {
 
   override fun service(request: Request, response: Response) = response.run {
     val details = RequestDetails(request)
-    println("Servicing request: $details")
     requests += details
     if (!requireAuth || request.getHeader(Header.Authorization) == authorizedHeader) {
       contentType = "text/plain"

@@ -12,6 +12,7 @@ import org.gradle.api.Task
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPluginConvention
+import org.gradle.api.tasks.AbstractCopyTask
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
@@ -42,27 +43,36 @@ open class HelmPlugin : Plugin<Project> {
     val DOWNLOAD_TASK_NAME = "downloadHelm"
     val INSTALL_TASK_NAME = "installHelm"
     val INITIALIZE_TASK_NAME = "initializeHelm"
-    val ENSURE_NO_CHART_TASK_NAME = "ensureNoHelmChart"
-    val CREATE_TASK_NAME = "createHelmChart"
-    val LINT_TASK_NAME = "lintHelmChart"
-    val PACKAGE_TASK_NAME = "packageHelmChart"
-    val DEPLOY_TASK_NAME = "deployHelmChart"
 
-    val TASKS_NAMES = setOf(
+    val ENSURE_NO_CHART_TASK_NAME_FORMAT = "ensureNo%sChart"
+    val CREATE_TASK_NAME_FORMAT = "create%sChart"
+    val LINT_TASK_NAME_FORMAT = "lint%sChart"
+    val PACKAGE_TASK_NAME_FORMAT = "package%sChart"
+    val PUBLISH_TASK_NAME_FORMAT = "publish%sChart"
+
+    val CONSTANT_TASKS_NAMES = setOf(
         VERIFY_ARCH_TASK_NAME,
         VERIFY_OS_TASK_NAME,
         VERIFY_TASK_NAME,
         DOWNLOAD_TASK_NAME,
         INSTALL_TASK_NAME,
-        INITIALIZE_TASK_NAME,
-        ENSURE_NO_CHART_TASK_NAME,
-        CREATE_TASK_NAME,
-        LINT_TASK_NAME,
-        PACKAGE_TASK_NAME,
-        DEPLOY_TASK_NAME
+        INITIALIZE_TASK_NAME
     )
 
+    val VARIABLE_TASK_NAME_FORMATS = setOf(
+        ENSURE_NO_CHART_TASK_NAME_FORMAT,
+        CREATE_TASK_NAME_FORMAT,
+        LINT_TASK_NAME_FORMAT,
+        PACKAGE_TASK_NAME_FORMAT,
+        PUBLISH_TASK_NAME_FORMAT
+    )
+
+    val VARIABLE_TASK_NAME_REGEXES = VARIABLE_TASK_NAME_FORMATS.map { it.replace("%s", "\\w+") }.map { Regex(it) }
+
     val SUPPORTED_ARCHITECTURES = setOf("amd64", "x86_64")
+
+    fun chartTaskName(format: String, chartName: String) =
+        format.format(chartName.split('-').joinToString("", transform = String::capitalize))
   }
 
   override fun apply(project: Project) {
@@ -70,6 +80,9 @@ open class HelmPlugin : Plugin<Project> {
       plugins.apply(JavaBasePlugin::class.java)
       val sourceSet = withJava { sourceSets.create("helm") }
       extensions.create("helm", HelmExtension::class.java, project, objects)
+
+      val charts = container(HelmChart::class.java) { name -> HelmChart(name, project) }
+      extensions.add("charts", charts)
 
       tasks {
         val archTask = VERIFY_ARCH_TASK_NAME {
@@ -95,44 +108,73 @@ open class HelmPlugin : Plugin<Project> {
         val installTask = INSTALL_TASK_NAME(InstallTask::class) {
           dependsOn(verifyTask, downloadTask)
         }
-        val initTask = INITIALIZE_TASK_NAME(InitializeTask::class) {
+        INITIALIZE_TASK_NAME(InitializeTask::class) {
           dependsOn(verifyTask, installTask)
         }
-        val ensureNoChartTask = ENSURE_NO_CHART_TASK_NAME(EnsureNoChartTask::class)
-        CREATE_TASK_NAME(CreateChartTask::class) {
-          dependsOn(ensureNoChartTask, verifyTask, initTask)
-        }
-        LINT_TASK_NAME(LintTask::class) {
-          dependsOn(verifyTask, initTask, sourceSet.processResourcesTaskName)
-          tasks["check"].dependsOn(this)
-        }
-        val packageTask = PACKAGE_TASK_NAME(PackageTask::class) {
-          dependsOn(verifyTask, initTask, tasks["check"], sourceSet.processResourcesTaskName)
-          tasks["assemble"].dependsOn(this)
-        }
-        DEPLOY_TASK_NAME(DeployTask::class) {
-          dependsOn(packageTask)
+      }
+
+      this.afterEvaluate {
+        tasks {
+          charts.forEach { chart ->
+            val verifyAndInitialize = arrayOf(tasks[VERIFY_TASK_NAME], tasks[INITIALIZE_TASK_NAME])
+            val ensureNoChartTask = chart.formatName(ENSURE_NO_CHART_TASK_NAME_FORMAT)(EnsureNoChartTask::class) {
+              taskChart = chart
+            }
+            chart.formatName(CREATE_TASK_NAME_FORMAT)(CreateChartTask::class) {
+              taskChart = chart
+              dependsOn(ensureNoChartTask, *verifyAndInitialize)
+            }
+            val lintTask = chart.formatName(LINT_TASK_NAME_FORMAT)(LintTask::class) {
+              taskChart = chart
+              dependsOn(sourceSet.processResourcesTaskName, *verifyAndInitialize)
+              tasks["check"].dependsOn(this)
+            }
+            val packageTask = chart.formatName(PACKAGE_TASK_NAME_FORMAT)(PackageTask::class) {
+              taskChart = chart
+              dependsOn(
+                  lintTask,
+                  sourceSet.processResourcesTaskName,
+                  *verifyAndInitialize
+              )
+              tasks["assemble"].dependsOn(this)
+            }
+            chart.formatName(PUBLISH_TASK_NAME_FORMAT)(PublishTask::class) {
+              taskChart = chart
+              dependsOn(packageTask)
+              tasks.findByName("publish")?.dependsOn(this)
+            }
+          }
         }
       }
     }
   }
 }
 
-open class HelmExtension @Inject constructor(private var project: Project, private var objectFactory: ObjectFactory) {
-  val install by lazy { objectFactory.newInstance(HelmInstallation::class.java, project) }
+open class HelmExtension @Inject constructor(private val project: Project, private val objectFactory: ObjectFactory) {
+  val install: HelmInstallation by lazy { objectFactory.newInstance(HelmInstallation::class.java, project) }
+  @Suppress("unused")
   fun install(action: Action<HelmInstallation>) = action.execute(install)
-  val lint by lazy { objectFactory.newInstance(HelmLint::class.java, project) }
+
+  val lint: HelmLint by lazy { objectFactory.newInstance(HelmLint::class.java) }
+  @Suppress("unused")
   fun lint(action: Action<HelmLint>) = action.execute(lint)
-  val repository by lazy { objectFactory.newInstance(HelmRepo::class.java) }
+
+  val repository: HelmRepo by lazy { objectFactory.newInstance(HelmRepo::class.java) }
+  @Suppress("unused")
   fun repository(action: Action<HelmRepo>) = action.execute(repository)
-  var chartName by DefaultingDelegate { project.name }
-  var chartVersion by DefaultingDelegate { project.version }
-  var appVersion by DefaultingDelegate { project.version }
-  var chartDir by DefaultingDelegate {
-    project.helmSource().resources.srcDirs.first().toPath().resolve(chartName).toFile()
-  }
 }
 
+open class HelmChart(val name: String, private val project: Project) {
+  var chartVersion by DefaultingDelegate { project.version.toString() }
+  var appVersion by DefaultingDelegate { project.version.toString() }
+  var chartDir: File by DefaultingDelegate {
+    project.helmSource().resources.srcDirs.first().toPath().resolve(name).toFile()
+  }
+
+  internal fun formatName(taskFormat: String) = HelmPlugin.chartTaskName(taskFormat, name)
+}
+
+@Suppress("MemberVisibilityCanBePrivate")
 open class HelmInstallation @Inject constructor(private val project: Project) {
   var version: String by DefaultingDelegate { "v2.8.2" }
   var os: OperatingSystem by DefaultingDelegate { OperatingSystem.detect() }
@@ -146,7 +188,7 @@ open class HelmInstallation @Inject constructor(private val project: Project) {
   var executable: File by DefaultingDelegate { project.file("$installDir/${os.executable()}") }
 }
 
-open class HelmLint @Inject constructor(private val project: Project) {
+open class HelmLint @Inject constructor() {
   var strict: Boolean by DefaultingDelegate { false }
   var values: Map<String, String> by DefaultingDelegate { mapOf<String, String>() }
   var valuesFiles: List<Any> by DefaultingDelegate { listOf<Any>() }
@@ -162,7 +204,7 @@ open class HelmRepo @Inject constructor() {
 }
 
 class DefaultingDelegate<T>(private val supplier: () -> T) {
-  var value: T? = null
+  private var value: T? = null
   operator fun getValue(thisRef: Any?, property: KProperty<*>) = value ?: supplier()
   operator fun setValue(thisRef: Any?, property: KProperty<*>, arg: T) {
     value = arg
@@ -202,6 +244,7 @@ internal fun Project.helmSource(): SourceSet = withJava { sourceSets["helm"] }
 internal fun Task.helmSource() = project.helmSource()
 internal operator fun <T : Any?> Callable<T>.invoke() = call()
 
+@Suppress("MemberVisibilityCanBePrivate")
 open class DownloadTask : DefaultTask() {
   @OutputFile
   val location = Callable { helm().install.archiveFile }
@@ -220,6 +263,7 @@ open class DownloadTask : DefaultTask() {
   }
 }
 
+@Suppress("MemberVisibilityCanBePrivate")
 open class InstallTask : Copy() {
   @InputFile
   val archive = Callable { helm().install.archiveFile }
@@ -230,15 +274,9 @@ open class InstallTask : Copy() {
     from(project.tarTree(project.resources.gzip(archive)))
     into(install)
   }
-}
 
-fun arg(arg: Any): CommandLineArgumentProvider = CommandLineArgumentProvider {
-  when (arg) {
-    is CommandLineArgumentProvider -> arg.asArguments()
-    is Callable<*> -> arg(arg.call()).asArguments()
-    is Iterable<*> -> arg.flatMap { it?.let { arg(it).asArguments() } ?: listOf() }
-    else -> listOf(arg.toString())
-  }
+  final override fun from(vararg sourcePaths: Any): AbstractCopyTask = super.from(*sourcePaths)
+  final override fun into(destdir: Any): AbstractCopyTask = super.into(destdir)
 }
 
 abstract class HelmExecTask : Exec() {
@@ -269,9 +307,27 @@ open class InitializeTask : HelmExecTask() {
   })
 }
 
+abstract class HelmChartExecTask : HelmExecTask() {
+  @InputDirectory
+  override val home = Callable { helm().install.homeDir }
+  @Internal
+  lateinit var taskChart: HelmChart
+  @Input
+  val chartName = Callable { taskChart.name }
+  @Input
+  val chartVersion = Callable { taskChart.chartVersion }
+  @Input
+  val appVersion = Callable { taskChart.appVersion }
+  @Internal
+  open val chartDir = Callable { taskChart.chartDir }
+}
+
+@Suppress("MemberVisibilityCanBePrivate")
 open class EnsureNoChartTask : DefaultTask() {
   @Internal
-  val chartDir = Callable { helm().chartDir }
+  lateinit var taskChart: HelmChart
+  @Input
+  val chartDir = Callable { taskChart.chartDir }
 
   @TaskAction
   fun noChart() {
@@ -283,20 +339,17 @@ open class EnsureNoChartTask : DefaultTask() {
   }
 }
 
-open class CreateChartTask : HelmExecTask() {
-  @InputDirectory
-  override val home = Callable { helm().install.homeDir }
+open class CreateChartTask : HelmChartExecTask() {
   @OutputDirectory
-  val chartDir = Callable { helm().chartDir }
+  override val chartDir = super.chartDir
 
   override fun helmArgs() = listOf(CommandLineArgumentProvider { listOf("create", chartDir().toString()) })
 }
 
-open class LintTask : HelmExecTask() {
+@Suppress("MemberVisibilityCanBePrivate")
+open class LintTask : HelmChartExecTask() {
   @InputDirectory
-  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(helm().chartName).toFile() }
-  @InputDirectory
-  override val home = Callable { helm().install.homeDir }
+  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(chartName()).toFile() }
   @Input
   val strict = Callable { helm().lint.strict }
   @Input
@@ -317,42 +370,42 @@ open class LintTask : HelmExecTask() {
   )
 }
 
-open class PackageTask : HelmExecTask() {
-  @OutputDirectory
-  val packageDir = Callable { helm().install.packageDir }
+@Suppress("MemberVisibilityCanBePrivate")
+open class PackageTask : HelmChartExecTask() {
+  @OutputFile
+  val packageFile = Callable { project.file("${helm().install.packageDir}/${chartName()}-${chartVersion()}.tgz") }
   @InputDirectory
-  override val home = Callable { helm().install.homeDir }
-  @Input
-  val appVersion = Callable { helm().appVersion }
-  @Input
-  val chartVersion = Callable { helm().chartVersion }
-  @InputDirectory
-  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(helm().chartName).toFile() }
+  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(chartName()).toFile() }
 
   override fun helmArgs() = listOf(CommandLineArgumentProvider {
     listOf(
         "package",
-        "--app-version", appVersion().toString(),
-        "--version", chartVersion().toString(),
-        "--destination", packageDir().toString(),
+        "--app-version", appVersion(),
+        "--version", chartVersion(),
+        "--destination", packageFile().parent,
         "--save=false",
         chart().toString()
     )
   })
 }
 
-open class DeployTask : DefaultTask() {
+@Suppress("MemberVisibilityCanBePrivate")
+open class PublishTask : DefaultTask() {
+  @Internal
+  lateinit var taskChart: HelmChart
+  @Input
+  val chartName = Callable { taskChart.name }
+  @Input
+  val chartVersion = Callable { taskChart.chartVersion }
   @InputDirectory
   val packageDir = Callable { helm().install.packageDir }
-  @Input
-  val chartVersion = Callable { helm().chartVersion }
   @Input
   val repository = Callable { helm().repository }
 
   @TaskAction
-  fun deployChart() {
+  fun publishChart() {
     val repo = repository()
-    val file = project.file("${packageDir()}/${project.name}-${chartVersion()}.tgz")
+    val file = project.file("${packageDir()}/${chartName()}-${chartVersion()}.tgz")
     val url = "${repo.url}/${file.name}"
     val clientBuilder = OkHttpClient.Builder()
     val user = repo.username
@@ -368,7 +421,9 @@ open class DeployTask : DefaultTask() {
               .header(
                   "Authorization",
                   when {
-                    challenges.any { it.scheme() == "Basic" && (null == realm || realm == it.realm()) } -> Credentials.basic(user, pass)
+                    challenges.any { it.scheme() == "Basic" && (null == realm || realm == it.realm()) } -> Credentials.basic(
+                        user,
+                        pass)
                     else -> throw Exception("Unsupported Challenges: $challenges")
                   }
               )
@@ -384,6 +439,6 @@ open class DeployTask : DefaultTask() {
         .also { repo.requestHeaders.forEach { (name, value) -> it.addHeader(name, value) } }
         .build()
     val response = client.newCall(request).execute()
-    if (!response.isSuccessful) throw Exception("Unable to deploy helm chart: $response")
+    if (!response.isSuccessful) throw Exception("Unable to publish helm chart: $response")
   }
 }

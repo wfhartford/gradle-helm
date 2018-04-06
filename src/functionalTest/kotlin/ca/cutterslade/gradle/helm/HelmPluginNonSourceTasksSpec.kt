@@ -27,14 +27,14 @@ object HelmPluginNonSourceTasksSpec : Spek({
           .withProjectDir(projectDirectory.toFile())
           .withPluginClasspath()
           .build().run {
-            assertEquals(
-                setOf<String>(),
-                Sets.intersection(
-                    HelmPlugin.TASKS_NAMES.map { ":$it" }.toSet(),
-                    tasks.map { it.path }.toSet()
-                ),
-                "No plugin tasks should have executed."
-            )
+            HelmPlugin.CONSTANT_TASKS_NAMES.forEach { taskName ->
+              val executed = tasks.filter { it.path == ":$taskName" }
+              assertEquals(listOf(), executed, "Task '$taskName' should not have executed")
+            }
+            HelmPlugin.VARIABLE_TASK_NAME_REGEXES.forEach { taskNameRegex ->
+              val executed = tasks.filter { taskNameRegex.containsMatchIn(it.path) }
+              assertEquals(listOf(), executed, "Tasks matching '$taskNameRegex' should not have executed")
+            }
           }
     }
     it("can verify architecture") {
