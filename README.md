@@ -2,7 +2,7 @@
 
 [![CircleCI](https://circleci.com/gh/wfhartford/gradle-helm.svg?style=svg)](https://circleci.com/gh/wfhartford/gradle-helm)
 
-Gradle plugin which helps creates manage and publish helm charts.
+Gradle plugin which helps to create, manage, and publish helm charts by integrating helm commands into your gradle build.
 
 This plugin can be installed from the [gradle plugin portal](https://plugins.gradle.org/plugin/ca.cutterslade.helm).
 
