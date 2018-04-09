@@ -165,6 +165,28 @@ object HelmPluginSimpleChartSpec : Spek({
             }
           }
         }
+
+        it("can publish a chart to chart museum") {
+          withModifiedFile(
+                  projectDirectory.resolve("build.gradle"),
+                  repositoryTransform(server(), chartmuseum = true),
+                  {
+                    buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+                      taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+                      taskSuccess(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+                      server().handler.let {
+                        assertEquals(1, it.requests.size, "Published with a single request")
+                        assertEquals(Method.POST, it.requests[0].method, "Publish request method")
+                        assertEquals("/", it.requests[0].path, "Publish request path")
+                        projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz").run {
+                          assertEquals(toFile().length(), it.requests[0].contentLength, "Published package size")
+                        }
+                      }
+                    }
+                  }
+          )
+        }
+
         it("cannot publish a chart if server requires authentication and none provided") {
           server().handler.requireAuth = true
           buildTaskForFailure(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {

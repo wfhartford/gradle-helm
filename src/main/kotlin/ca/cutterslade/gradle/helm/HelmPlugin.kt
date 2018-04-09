@@ -198,6 +198,7 @@ open class HelmRepo @Inject constructor() {
   var url by DefaultingDelegate { "https://kubernetes-charts.storage.googleapis.com/" }
   var username: String? = null
   var password: String? = null
+  var chartmuseum: Boolean = false
   var authRealm: String? = null
   var requestHeaders by DefaultingDelegate { listOf<List<String>>() }
   var clientConfigurator by DefaultingDelegate { Action<OkHttpClient.Builder> {} }
@@ -406,7 +407,10 @@ open class PublishTask : DefaultTask() {
   fun publishChart() {
     val repo = repository()
     val file = project.file("${packageDir()}/${chartName()}-${chartVersion()}.tgz")
-    val url = "${repo.url}/${file.name}"
+    val url = "${repo.url}${(when(repo.chartmuseum) {
+      true -> ""
+      false -> "/${file.name}"
+    })}"
     val clientBuilder = OkHttpClient.Builder()
     val user = repo.username
     val pass = repo.password
@@ -429,15 +433,18 @@ open class PublishTask : DefaultTask() {
               )
               .build().also { println("Authenticating with $it") }
         }
-      }
+    }
     }
     repo.clientConfigurator.execute(clientBuilder)
     val client = clientBuilder.build()
     val request = Request.Builder()
-        .url(url)
-        .put(RequestBody.create(null, file))
-        .also { repo.requestHeaders.forEach { (name, value) -> it.addHeader(name, value) } }
-        .build()
+            .url(url)
+            .method(when(repo.chartmuseum) {
+              true -> "POST"
+              false -> "PUT"
+            },RequestBody.create(null, file))
+            .also { repo.requestHeaders.forEach { (name, value) -> it.addHeader(name, value) } }
+            .build()
     val response = client.newCall(request).execute()
     if (!response.isSuccessful) throw Exception("Unable to publish helm chart: $response")
   }
