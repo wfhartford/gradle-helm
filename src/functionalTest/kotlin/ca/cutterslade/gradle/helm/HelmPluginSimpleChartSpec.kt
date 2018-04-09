@@ -43,7 +43,7 @@ object HelmPluginSimpleChartSpec : Spek({
       |charts {
       |${charts.joinToString(
         separator = "\n",
-        transform = { "  '${it.name}' { chartVersion = '${it.version}' }" }
+        transform = { "  '${it.name}' {\n    chartVersion = '${it.version}'\n  }" }
     )}
       |}
       """.trimMargin())
@@ -106,10 +106,25 @@ object HelmPluginSimpleChartSpec : Spek({
           }
         }
 
+        it("fails validation a chart in strict mode") {
+          files(
+              ModifiedFile(buildFile, addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.strict = true")),
+              {
+                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                  assertTrue(output.contains("[ERROR] templates/: render error in "),
+                      "Expected render error message")
+                }
+              }
+          )
+        }
+
         it("fails validation of a chart with non-semantic version") {
-          withModifiedFile(
-              projectDirectory.resolve("src/helm/resources/${chart.name}/Chart.yaml"),
-              removeLine(Regex("version:.*")),
+          files(
+              ModifiedFile(
+                  projectDirectory.resolve("src/helm/resources/${chart.name}/Chart.yaml"),
+                  removeLine(Regex("version:.*"))
+              ),
               {
                 buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
                   taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
@@ -121,9 +136,11 @@ object HelmPluginSimpleChartSpec : Spek({
         }
 
         it("fails validation of a chart with name not matching directory") {
-          withModifiedFile(
-              projectDirectory.resolve("src/helm/resources/${chart.name}/Chart.yaml"),
-              replaceLine(Regex("name:.*"), "name: me"),
+          files(
+              ModifiedFile(
+                  projectDirectory.resolve("src/helm/resources/${chart.name}/Chart.yaml"),
+                  replaceLine(Regex("name:.*"), "name: me")
+              ),
               {
                 buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
                   taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
@@ -134,14 +151,85 @@ object HelmPluginSimpleChartSpec : Spek({
         }
 
         it("fails validation of a chart with malformed values.yaml") {
-          withModifiedFile(
-              projectDirectory.resolve("src/helm/resources/${chart.name}/values.yaml"),
-              replaceLine(Regex("image:.*"), "image: {"),
+          files(
+              ModifiedFile(
+                  projectDirectory.resolve("src/helm/resources/${chart.name}/values.yaml"),
+                  replaceLine(Regex("image:.*"), "image: {")
+              ),
               {
                 buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
                   taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
                   assertTrue(output.contains("[ERROR] values.yaml: unable to parse YAML"),
                       "Expected unable to parse YAML error")
+                }
+              }
+          )
+        }
+
+        it("fails validation of a chart with malformed values.yaml") {
+          files(
+              ModifiedFile(
+                  projectDirectory.resolve("src/helm/resources/${chart.name}/values.yaml"),
+                  replaceLine(Regex("image:.*"), "image: {")
+              ),
+              {
+                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                  assertTrue(output.contains("[ERROR] values.yaml: unable to parse YAML"),
+                      "Expected unable to parse YAML error")
+                }
+              }
+          )
+        }
+
+        it("fails validation of a chart including a missing required value reference") {
+          files(
+              AdditionalFile(
+                  projectDirectory.resolve("src/helm/resources/${chart.name}/templates/extra.txt"),
+                  "{{ required \"missing value must be specified\" .Values.missing }}"
+              ),
+              {
+                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                  assertTrue(output.contains("missing value must be specified"),
+                      "Expected message from required directive")
+                }
+              }
+          )
+        }
+
+        it("validates a chart with a required value when specified in build file") {
+          files(
+              ModifiedFile(
+                  buildFile,
+                  addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.values = [missing:'hi']")
+              ),
+              AdditionalFile(
+                  projectDirectory.resolve("src/helm/resources/${chart.name}/templates/extra.txt"),
+                  "{{ required \"missing value must be specified\" .Values.missing }}"
+              ),
+              {
+                buildTask(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                  taskSuccess(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                }
+              }
+          )
+        }
+
+        it("validates a chart with a required value when specified in values file") {
+          files(
+              ModifiedFile(
+                  buildFile,
+                  addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.valuesFiles = ['values.yaml']")
+              ),
+              AdditionalFile(projectDirectory.resolve("values.yaml"), "missing: hi"),
+              AdditionalFile(
+                  projectDirectory.resolve("src/helm/resources/${chart.name}/templates/extra.txt"),
+                  "{{ required \"missing value must be specified\" .Values.missing }}"
+              ),
+              {
+                buildTask(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                  taskSuccess(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
                 }
               }
           )
@@ -176,9 +264,8 @@ object HelmPluginSimpleChartSpec : Spek({
         }
 
         it("can publish a chart if server requires authentication and correct credentials provided no realm") {
-          withModifiedFile(
-              projectDirectory.resolve("build.gradle"),
-              repositoryTransform(server()),
+          files(
+              ModifiedFile(buildFile, repositoryTransform(server())),
               {
                 server().handler.requireAuth = true
                 buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
@@ -207,9 +294,8 @@ object HelmPluginSimpleChartSpec : Spek({
           )
         }
         it("can publish a chart if server requires authentication and correct credentials provided with realm") {
-          withModifiedFile(
-              projectDirectory.resolve("build.gradle"),
-              repositoryTransform(server(), realm = "test"),
+          files(
+              ModifiedFile(projectDirectory.resolve("build.gradle"), repositoryTransform(server(), realm = "test")),
               {
                 server().handler.requireAuth = true
                 buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
@@ -238,9 +324,8 @@ object HelmPluginSimpleChartSpec : Spek({
           )
         }
         it("cannot publish a chart if server requires authentication and correct credentials provided with wrong realm") {
-          withModifiedFile(
-              projectDirectory.resolve("build.gradle"),
-              repositoryTransform(server(), realm = "bunk"),
+          files(
+              ModifiedFile(projectDirectory.resolve("build.gradle"), repositoryTransform(server(), realm = "bunk")),
               {
                 server().handler.requireAuth = true
                 buildTaskForFailure(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {

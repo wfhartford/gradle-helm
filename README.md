@@ -20,9 +20,6 @@ helm {
     // the newest version of helm available at the time.
     version = 'v2.8.2'
   }
-  lint {
-    // allows configuration of the settings used when 'helm lint' is executed.
-  }
   repository {
     // allows configuration of the repository to which the publish tasks will
     // upload the packaged chart.
@@ -61,6 +58,11 @@ charts {
     // 'src/helm/resources' extra configuration will be required to have the
     // chart files processed into the helm source set output directory.
     chartDir 'src/helm/resources/my-first-chart'
+    
+    // Each chart can include configuration which changes how the chart is
+    // validated by the lint command.
+    lint.values = ['valueKey':'some value']
+    lint.valuesFiles = ['lint-values.yaml']
   }
 }
 ```

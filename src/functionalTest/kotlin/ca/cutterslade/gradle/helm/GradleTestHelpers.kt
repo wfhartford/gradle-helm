@@ -9,6 +9,7 @@ import org.jetbrains.spek.api.dsl.it
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
+import kotlin.test.assertFalse
 import kotlin.test.assertNotEquals
 import kotlin.test.assertNotNull
 import kotlin.test.assertTrue
@@ -89,6 +90,93 @@ internal fun Path.isFile(vararg subDirsFile: String): Path =
 
 internal fun Path.parentContents() = "$parent contains ${parent.toFile().list().contentToString()}"
 
+internal interface TestFile {
+  fun apply(): Unit
+  fun revert(): Unit
+}
+
+internal class ModifiedFile(private val file: Path, private val transform: (List<String>) -> List<String>) : TestFile {
+  private var original: String? = null
+
+  override fun apply() {
+    file.toFile().apply {
+      val (originalLines, modified) = readText().let {
+        original = it
+        it.lines().let { Pair(it, transform(it)) }
+      }
+      assertNotEquals(originalLines, modified, "ModifiedFile did not modify file")
+      writeText(modified.joinToString(separator = "\n"))
+    }
+  }
+
+  override fun revert() {
+    original?.let { file.toFile().writeText(it) }
+  }
+}
+
+internal class AdditionalFile(private val file: Path, private val body: String) : TestFile {
+  private var written = false
+  override fun apply() {
+    file.toFile().apply {
+      assertFalse(exists(), "Additional file already exists: $file")
+      writeText(body)
+      written = true
+    }
+  }
+
+  override fun revert() {
+    if (written) Files.delete(file)
+  }
+}
+
+internal fun TestBody.files(
+    file: TestFile,
+    testAction: TestBody.() -> Unit
+) = files(listOf(file), testAction)
+
+internal fun TestBody.files(
+    fileOne: TestFile,
+    fileTwo: TestFile,
+    testAction: TestBody.() -> Unit
+) = files(listOf(fileOne, fileTwo), testAction)
+
+internal fun TestBody.files(
+    fileOne: TestFile,
+    fileTwo: TestFile,
+    fileThree: TestFile,
+    testAction: TestBody.() -> Unit
+) = files(listOf(fileOne, fileTwo, fileThree), testAction)
+
+internal fun TestBody.files(
+    testFiles: List<TestFile>,
+    testAction: TestBody.() -> Unit
+) {
+  testFiles.forEach { it.apply() }
+  try {
+    testAction()
+  }
+  finally {
+    testFiles.forEach { it.revert() }
+  }
+}
+
+@Deprecated("use files()")
+internal fun TestBody.withAdditionalFile(
+    file: Path,
+    body: String,
+    testAction: TestBody.() -> Unit
+) {
+  assertFalse(file.toFile().exists(), "Additional file exists: $file")
+  file.toFile().writeText(body)
+  try {
+    testAction()
+  }
+  finally {
+    file.toFile().delete()
+  }
+}
+
+@Deprecated("use files()")
 internal fun TestBody.withModifiedFile(
     file: Path,
     transform: ((List<String>) -> List<String>),
@@ -112,6 +200,10 @@ internal fun removeLine(line: Regex): (List<String>) -> List<String> = { lines -
 
 internal fun replaceLine(line: Regex, replace: String): (List<String>) -> List<String> = { lines ->
   lines.map { if (it.matches(line)) replace else it }
+}
+
+internal fun addLineFollowing(precedingLine: Regex, newLine: String): (List<String>) -> List<String> = { lines ->
+  lines.flatMap { if (it.matches(precedingLine)) listOf(it, newLine) else listOf(it) }
 }
 
 internal fun repositoryTransform(

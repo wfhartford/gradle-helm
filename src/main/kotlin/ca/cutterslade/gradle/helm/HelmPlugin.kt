@@ -81,7 +81,7 @@ open class HelmPlugin : Plugin<Project> {
       val sourceSet = withJava { sourceSets.create("helm") }
       extensions.create("helm", HelmExtension::class.java, project, objects)
 
-      val charts = container(HelmChart::class.java) { name -> HelmChart(name, project) }
+      val charts = container(HelmChart::class.java) { name -> HelmChart(name, project, objects) }
       extensions.add("charts", charts)
 
       tasks {
@@ -155,21 +155,20 @@ open class HelmExtension @Inject constructor(private val project: Project, priva
   @Suppress("unused")
   fun install(action: Action<HelmInstallation>) = action.execute(install)
 
-  val lint: HelmLint by lazy { objectFactory.newInstance(HelmLint::class.java) }
-  @Suppress("unused")
-  fun lint(action: Action<HelmLint>) = action.execute(lint)
-
   val repository: HelmRepo by lazy { objectFactory.newInstance(HelmRepo::class.java) }
   @Suppress("unused")
   fun repository(action: Action<HelmRepo>) = action.execute(repository)
 }
 
-open class HelmChart(val name: String, private val project: Project) {
+open class HelmChart(val name: String, private val project: Project, private val objectFactory: ObjectFactory) {
   var chartVersion by DefaultingDelegate { project.version.toString() }
   var appVersion by DefaultingDelegate { project.version.toString() }
   var chartDir: Any by DefaultingDelegate {
     project.helmSource().resources.srcDirs.first().toPath().resolve(name).toFile()
   }
+  val lint: HelmLint by lazy { objectFactory.newInstance(HelmLint::class.java) }
+  @Suppress("unused")
+  fun lint(action: Action<HelmLint>) = action.execute(lint)
 
   internal fun formatName(taskFormat: String) = HelmPlugin.chartTaskName(taskFormat, name)
 }
@@ -349,13 +348,13 @@ open class CreateChartTask : HelmChartExecTask() {
 @Suppress("MemberVisibilityCanBePrivate")
 open class LintTask : HelmChartExecTask() {
   @InputDirectory
-  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(chartName()).toFile() }
+  override val chartDir = super.chartDir
   @Input
-  val strict = Callable { helm().lint.strict }
+  val strict = Callable { taskChart.lint.strict }
   @Input
-  val values = Callable { helm().lint.values }
+  val values = Callable { taskChart.lint.values }
   @InputFiles
-  val valuesFile = Callable { helm().lint.valuesFiles }
+  val valuesFile = Callable { taskChart.lint.valuesFiles }
 
   override fun helmArgs() = listOf(
       CommandLineArgumentProvider { listOf("lint") },
@@ -366,7 +365,7 @@ open class LintTask : HelmChartExecTask() {
           listOf("--values", project.file(file).toString())
         }
       },
-      CommandLineArgumentProvider { listOf(chart().toString()) }
+      CommandLineArgumentProvider { listOf(chartDir().toString()) }
   )
 }
 
