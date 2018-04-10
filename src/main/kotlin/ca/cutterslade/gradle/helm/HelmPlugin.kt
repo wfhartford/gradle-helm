@@ -434,7 +434,7 @@ open class PublishTask : DefaultTask() {
                     else -> throw Exception("Unsupported Challenges: $challenges")
                   }
               )
-              .build().also { println("Authenticating with $it") }
+              .build()
         }
       }
     }
