@@ -202,6 +202,9 @@ internal fun replaceLine(line: Regex, replace: String): (List<String>) -> List<S
   lines.map { if (it.matches(line)) replace else it }
 }
 
+internal fun addLineFollowing(precedingLineRegex: String, newLine: String): (List<String>) -> List<String> =
+    addLineFollowing(Regex(precedingLineRegex), newLine)
+
 internal fun addLineFollowing(precedingLine: Regex, newLine: String): (List<String>) -> List<String> = { lines ->
   lines.flatMap { if (it.matches(precedingLine)) listOf(it, newLine) else listOf(it) }
 }

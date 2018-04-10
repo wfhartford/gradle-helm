@@ -37,6 +37,10 @@ import kotlin.reflect.KProperty
 
 open class HelmPlugin : Plugin<Project> {
   companion object {
+    val HELM_SOURCE_SET_NAME = "helm"
+    val HELM_EXTENSION_NAME = "helm"
+    val CHARTS_EXTENSION_NAME = "charts"
+
     val VERIFY_ARCH_TASK_NAME = "helmVerifyArchitecture"
     val VERIFY_OS_TASK_NAME = "helmVerifyOperatingSystem"
     val VERIFY_TASK_NAME = "helmVerifySupport"
@@ -78,11 +82,15 @@ open class HelmPlugin : Plugin<Project> {
   override fun apply(project: Project) {
     project.run {
       plugins.apply(JavaBasePlugin::class.java)
-      val sourceSet = withJava { sourceSets.create("helm") }
-      extensions.create("helm", HelmExtension::class.java, project, objects)
+      val sourceSet = withJava { sourceSets.create(HELM_SOURCE_SET_NAME) }
+          .apply {
+            resources.setSrcDirs(listOf(project.file("src/main/helm")))
+            java.setSrcDirs(listOf<File>())
+          }
+      extensions.create(HELM_EXTENSION_NAME, HelmExtension::class.java, project, objects)
 
       val charts = container(HelmChart::class.java) { name -> HelmChart(name, project, objects) }
-      extensions.add("charts", charts)
+      extensions.add(CHARTS_EXTENSION_NAME, charts)
 
       tasks {
         val archTask = VERIFY_ARCH_TASK_NAME {
@@ -239,7 +247,7 @@ internal fun <T> Project.withJava(function: JavaPluginConvention.() -> T): T =
 
 internal fun Project.helm(): HelmExtension = extensions.getByType(HelmExtension::class.java)
 internal fun Task.helm() = project.helm()
-internal fun Project.helmSource(): SourceSet = withJava { sourceSets["helm"] }
+internal fun Project.helmSource(): SourceSet = withJava { sourceSets[HelmPlugin.HELM_SOURCE_SET_NAME] }
 internal fun Task.helmSource() = project.helmSource()
 internal operator fun <T : Any?> Callable<T>.invoke() = call()
 

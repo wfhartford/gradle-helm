@@ -87,7 +87,7 @@ object HelmPluginSimpleChartSpec : Spek({
 
           projectDirectory.isDir("build", "helm", "install")
           projectDirectory.isDir("build", "helm", "home")
-          projectDirectory.isFile("src", "helm", "resources", chart.name, "Chart.yaml").run {
+          projectDirectory.isFile("src", "main", "helm", chart.name, "Chart.yaml").run {
             assertTrue(Files.lines(this).anyMatch { Regex("name: \\Q${chart.name}\\E").matches(it) },
                 "Chart.yaml file missing expected line 'name: ${chart.name}'")
           }
@@ -122,7 +122,7 @@ object HelmPluginSimpleChartSpec : Spek({
         it("fails validation of a chart with non-semantic version") {
           files(
               ModifiedFile(
-                  projectDirectory.resolve("src/helm/resources/${chart.name}/Chart.yaml"),
+                  projectDirectory.resolve("src/main/helm/${chart.name}/Chart.yaml"),
                   removeLine(Regex("version:.*"))
               ),
               {
@@ -138,7 +138,7 @@ object HelmPluginSimpleChartSpec : Spek({
         it("fails validation of a chart with name not matching directory") {
           files(
               ModifiedFile(
-                  projectDirectory.resolve("src/helm/resources/${chart.name}/Chart.yaml"),
+                  projectDirectory.resolve("src/main/helm/${chart.name}/Chart.yaml"),
                   replaceLine(Regex("name:.*"), "name: me")
               ),
               {
@@ -153,7 +153,7 @@ object HelmPluginSimpleChartSpec : Spek({
         it("fails validation of a chart with malformed values.yaml") {
           files(
               ModifiedFile(
-                  projectDirectory.resolve("src/helm/resources/${chart.name}/values.yaml"),
+                  projectDirectory.resolve("src/main/helm/${chart.name}/values.yaml"),
                   replaceLine(Regex("image:.*"), "image: {")
               ),
               {
@@ -169,7 +169,7 @@ object HelmPluginSimpleChartSpec : Spek({
         it("fails validation of a chart with malformed values.yaml") {
           files(
               ModifiedFile(
-                  projectDirectory.resolve("src/helm/resources/${chart.name}/values.yaml"),
+                  projectDirectory.resolve("src/main/helm/${chart.name}/values.yaml"),
                   replaceLine(Regex("image:.*"), "image: {")
               ),
               {
@@ -185,7 +185,7 @@ object HelmPluginSimpleChartSpec : Spek({
         it("fails validation of a chart including a missing required value reference") {
           files(
               AdditionalFile(
-                  projectDirectory.resolve("src/helm/resources/${chart.name}/templates/extra.txt"),
+                  projectDirectory.resolve("src/main/helm/${chart.name}/templates/extra.txt"),
                   "{{ required \"missing value must be specified\" .Values.missing }}"
               ),
               {
@@ -205,7 +205,7 @@ object HelmPluginSimpleChartSpec : Spek({
                   addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.values = [missing:'hi']")
               ),
               AdditionalFile(
-                  projectDirectory.resolve("src/helm/resources/${chart.name}/templates/extra.txt"),
+                  projectDirectory.resolve("src/main/helm/${chart.name}/templates/extra.txt"),
                   "{{ required \"missing value must be specified\" .Values.missing }}"
               ),
               {
@@ -224,7 +224,7 @@ object HelmPluginSimpleChartSpec : Spek({
               ),
               AdditionalFile(projectDirectory.resolve("values.yaml"), "missing: hi"),
               AdditionalFile(
-                  projectDirectory.resolve("src/helm/resources/${chart.name}/templates/extra.txt"),
+                  projectDirectory.resolve("src/main/helm/${chart.name}/templates/extra.txt"),
                   "{{ required \"missing value must be specified\" .Values.missing }}"
               ),
               {
@@ -295,7 +295,7 @@ object HelmPluginSimpleChartSpec : Spek({
         }
         it("can publish a chart if server requires authentication and correct credentials provided with realm") {
           files(
-              ModifiedFile(projectDirectory.resolve("build.gradle"), repositoryTransform(server(), realm = "test")),
+              ModifiedFile(buildFile, repositoryTransform(server(), realm = "test")),
               {
                 server().handler.requireAuth = true
                 buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
@@ -325,7 +325,7 @@ object HelmPluginSimpleChartSpec : Spek({
         }
         it("cannot publish a chart if server requires authentication and correct credentials provided with wrong realm") {
           files(
-              ModifiedFile(projectDirectory.resolve("build.gradle"), repositoryTransform(server(), realm = "bunk")),
+              ModifiedFile(buildFile, repositoryTransform(server(), realm = "bunk")),
               {
                 server().handler.requireAuth = true
                 buildTaskForFailure(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
