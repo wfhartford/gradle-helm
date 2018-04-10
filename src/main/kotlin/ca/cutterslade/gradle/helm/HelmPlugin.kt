@@ -437,7 +437,8 @@ open class PublishTask : DefaultTask() {
         .put(RequestBody.create(null, file))
         .also { repo.requestHeaders.forEach { (name, value) -> it.addHeader(name, value) } }
         .build()
-    val response = client.newCall(request).execute()
-    if (!response.isSuccessful) throw Exception("Unable to publish helm chart: $response")
+    client.newCall(request).execute().use {
+      if (!it.isSuccessful) throw Exception("Unable to publish helm chart: $it")
+    }
   }
 }
