@@ -64,7 +64,7 @@ object HelmPluginSimpleChartSpec : Spek({
 
   describe("The helm plugin") {
     it("generates all tasks for each chart") {
-      buildTask(projectDirectory, "tasks", "--all").run {
+      buildTask(projectDirectory, "tasks").run {
         HelmPlugin.CONSTANT_TASKS_NAMES.forEach {
           assertTrue(output.contains(it), "list of tasks includes $it")
         }

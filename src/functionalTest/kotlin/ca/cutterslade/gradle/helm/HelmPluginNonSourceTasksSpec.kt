@@ -37,6 +37,18 @@ object HelmPluginNonSourceTasksSpec : Spek({
             }
           }
     }
+    it("creates static tasks") {
+      buildTask(projectDirectory, "tasks").run {
+        taskSuccess("tasks")
+        val lines = output.lines()
+        val startHelmTasks = lines.indexOfFirst { it == "Helm tasks" }
+        val endHelmTasks = startHelmTasks + lines.subList(startHelmTasks, lines.size).indexOfFirst { it.isEmpty() }
+        val helmTasks = lines.subList(startHelmTasks + 2, endHelmTasks)
+            .map { it.subSequence(0, it.indexOf(' ')) }
+            .toSet()
+        assertEquals(HelmPlugin.CONSTANT_TASKS_NAMES, helmTasks, "Unexpected list of helm tasks")
+      }
+    }
     it("can verify architecture") {
       buildTask(projectDirectory, HelmPlugin.VERIFY_ARCH_TASK_NAME)
           .taskSuccess(HelmPlugin.VERIFY_ARCH_TASK_NAME)
