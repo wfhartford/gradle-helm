@@ -2,7 +2,7 @@
 
 [![CircleCI](https://circleci.com/gh/wfhartford/gradle-helm.svg?style=svg)](https://circleci.com/gh/wfhartford/gradle-helm)
 
-Gradle plugin which helps creates manage and publish helm charts.
+Gradle plugin which helps to create, manage, and publish helm charts by integrating helm commands into your gradle build.
 
 This plugin can be installed from the [gradle plugin portal](https://plugins.gradle.org/plugin/ca.cutterslade.helm).
 
@@ -19,9 +19,6 @@ helm {
     // is the helm version to use. Each version of the plugin will default to
     // the newest version of helm available at the time.
     version = 'v2.8.2'
-  }
-  lint {
-    // allows configuration of the settings used when 'helm lint' is executed.
   }
   repository {
     // allows configuration of the repository to which the publish tasks will
@@ -61,6 +58,11 @@ charts {
     // 'src/helm/resources' extra configuration will be required to have the
     // chart files processed into the helm source set output directory.
     chartDir 'src/helm/resources/my-first-chart'
+    
+    // Each chart can include configuration which changes how the chart is
+    // validated by the lint command.
+    lint.values = ['valueKey':'some value']
+    lint.valuesFiles = ['lint-values.yaml']
   }
 }
 ```

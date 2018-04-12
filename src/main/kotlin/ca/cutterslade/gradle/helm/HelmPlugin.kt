@@ -37,6 +37,10 @@ import kotlin.reflect.KProperty
 
 open class HelmPlugin : Plugin<Project> {
   companion object {
+    val HELM_SOURCE_SET_NAME = "helm"
+    val HELM_EXTENSION_NAME = "helm"
+    val CHARTS_EXTENSION_NAME = "charts"
+
     val VERIFY_ARCH_TASK_NAME = "helmVerifyArchitecture"
     val VERIFY_OS_TASK_NAME = "helmVerifyOperatingSystem"
     val VERIFY_TASK_NAME = "helmVerifySupport"
@@ -75,17 +79,27 @@ open class HelmPlugin : Plugin<Project> {
         format.format(chartName.split('-').joinToString("", transform = String::capitalize))
   }
 
+  private fun Task.desc(desc: String) {
+    group = "Helm"
+    description = desc
+  }
+
   override fun apply(project: Project) {
     project.run {
       plugins.apply(JavaBasePlugin::class.java)
-      val sourceSet = withJava { sourceSets.create("helm") }
-      extensions.create("helm", HelmExtension::class.java, project, objects)
+      val sourceSet = withJava { sourceSets.create(HELM_SOURCE_SET_NAME) }
+          .apply {
+            resources.setSrcDirs(listOf(project.file("src/main/helm")))
+            java.setSrcDirs(listOf<File>())
+          }
+      extensions.create(HELM_EXTENSION_NAME, HelmExtension::class.java, project, objects)
 
-      val charts = container(HelmChart::class.java) { name -> HelmChart(name, project) }
-      extensions.add("charts", charts)
+      val charts = container(HelmChart::class.java) { name -> HelmChart(name, project, objects) }
+      extensions.add(CHARTS_EXTENSION_NAME, charts)
 
       tasks {
         val archTask = VERIFY_ARCH_TASK_NAME {
+          desc("Ensure that the architecture is supported by helm.")
           doLast {
             System.getProperty("os.arch").let { arch ->
               if (arch !in SUPPORTED_ARCHITECTURES) {
@@ -95,20 +109,25 @@ open class HelmPlugin : Plugin<Project> {
           }
         }
         val osTask = VERIFY_OS_TASK_NAME {
+          desc("Ensure that the operating system is supported by helm.")
           doLast {
             OperatingSystem.detect()
           }
         }
         val verifyTask = VERIFY_TASK_NAME {
+          desc("Ensure that the system is supported by helm.")
           dependsOn(archTask, osTask)
         }
         val downloadTask = DOWNLOAD_TASK_NAME(DownloadTask::class) {
+          desc("Download the helm distribution.")
           dependsOn(verifyTask)
         }
         val installTask = INSTALL_TASK_NAME(InstallTask::class) {
+          desc("Install helm locally.")
           dependsOn(verifyTask, downloadTask)
         }
         INITIALIZE_TASK_NAME(InitializeTask::class) {
+          desc("Initialise the local helm installation.")
           dependsOn(verifyTask, installTask)
         }
       }
@@ -118,18 +137,22 @@ open class HelmPlugin : Plugin<Project> {
           charts.forEach { chart ->
             val verifyAndInitialize = arrayOf(tasks[VERIFY_TASK_NAME], tasks[INITIALIZE_TASK_NAME])
             val ensureNoChartTask = chart.formatName(ENSURE_NO_CHART_TASK_NAME_FORMAT)(EnsureNoChartTask::class) {
+              desc("Ensure that the chart ${chart.name} does not exist.")
               taskChart = chart
             }
             chart.formatName(CREATE_TASK_NAME_FORMAT)(CreateChartTask::class) {
+              desc("Create the chart ${chart.name} using the helm create command.")
               taskChart = chart
               dependsOn(ensureNoChartTask, *verifyAndInitialize)
             }
             val lintTask = chart.formatName(LINT_TASK_NAME_FORMAT)(LintTask::class) {
+              desc("Validate the chart ${chart.name} using the helm lint command.")
               taskChart = chart
               dependsOn(sourceSet.processResourcesTaskName, *verifyAndInitialize)
               tasks["check"].dependsOn(this)
             }
             val packageTask = chart.formatName(PACKAGE_TASK_NAME_FORMAT)(PackageTask::class) {
+              desc("Validate the chart ${chart.name} using the helm package command.")
               taskChart = chart
               dependsOn(
                   lintTask,
@@ -139,6 +162,7 @@ open class HelmPlugin : Plugin<Project> {
               tasks["assemble"].dependsOn(this)
             }
             chart.formatName(PUBLISH_TASK_NAME_FORMAT)(PublishTask::class) {
+              desc("Publish the chart ${chart.name} to the configured chart repository.")
               taskChart = chart
               dependsOn(packageTask)
               tasks.findByName("publish")?.dependsOn(this)
@@ -155,21 +179,20 @@ open class HelmExtension @Inject constructor(private val project: Project, priva
   @Suppress("unused")
   fun install(action: Action<HelmInstallation>) = action.execute(install)
 
-  val lint: HelmLint by lazy { objectFactory.newInstance(HelmLint::class.java) }
-  @Suppress("unused")
-  fun lint(action: Action<HelmLint>) = action.execute(lint)
-
   val repository: BaseRepo by lazy { objectFactory.newInstance(BaseRepo::class.java) }
   @Suppress("unused")
   fun repository(action: Action<BaseRepo>) = action.execute(repository)
 }
 
-open class HelmChart(val name: String, private val project: Project) {
+open class HelmChart(val name: String, private val project: Project, private val objectFactory: ObjectFactory) {
   var chartVersion by DefaultingDelegate { project.version.toString() }
   var appVersion by DefaultingDelegate { project.version.toString() }
   var chartDir: Any by DefaultingDelegate {
     project.helmSource().resources.srcDirs.first().toPath().resolve(name).toFile()
   }
+  val lint: HelmLint by lazy { objectFactory.newInstance(HelmLint::class.java) }
+  @Suppress("unused")
+  fun lint(action: Action<HelmLint>) = action.execute(lint)
 
   internal fun formatName(taskFormat: String) = HelmPlugin.chartTaskName(taskFormat, name)
 }
@@ -270,7 +293,7 @@ internal fun <T> Project.withJava(function: JavaPluginConvention.() -> T): T =
 
 internal fun Project.helm(): HelmExtension = extensions.getByType(HelmExtension::class.java)
 internal fun Task.helm() = project.helm()
-internal fun Project.helmSource(): SourceSet = withJava { sourceSets["helm"] }
+internal fun Project.helmSource(): SourceSet = withJava { sourceSets[HelmPlugin.HELM_SOURCE_SET_NAME] }
 internal fun Task.helmSource() = project.helmSource()
 internal operator fun <T : Any?> Callable<T>.invoke() = call()
 
@@ -379,13 +402,13 @@ open class CreateChartTask : HelmChartExecTask() {
 @Suppress("MemberVisibilityCanBePrivate")
 open class LintTask : HelmChartExecTask() {
   @InputDirectory
-  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(chartName()).toFile() }
+  override val chartDir = super.chartDir
   @Input
-  val strict = Callable { helm().lint.strict }
+  val strict = Callable { taskChart.lint.strict }
   @Input
-  val values = Callable { helm().lint.values }
+  val values = Callable { taskChart.lint.values }
   @InputFiles
-  val valuesFile = Callable { helm().lint.valuesFiles }
+  val valuesFile = Callable { taskChart.lint.valuesFiles }
 
   override fun helmArgs() = listOf(
       CommandLineArgumentProvider { listOf("lint") },
@@ -396,7 +419,7 @@ open class LintTask : HelmChartExecTask() {
           listOf("--values", project.file(file).toString())
         }
       },
-      CommandLineArgumentProvider { listOf(chart().toString()) }
+      CommandLineArgumentProvider { listOf(chartDir().toString()) }
   )
 }
 
