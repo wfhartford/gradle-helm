@@ -159,9 +159,9 @@ open class HelmExtension @Inject constructor(private val project: Project, priva
   @Suppress("unused")
   fun lint(action: Action<HelmLint>) = action.execute(lint)
 
-  val repository: HelmRepo by lazy { objectFactory.newInstance(HelmRepo::class.java) }
+  val repository: BaseRepo by lazy { objectFactory.newInstance(BaseRepo::class.java) }
   @Suppress("unused")
-  fun repository(action: Action<HelmRepo>) = action.execute(repository)
+  fun repository(action: Action<BaseRepo>) = action.execute(repository)
 }
 
 open class HelmChart(val name: String, private val project: Project) {
@@ -193,16 +193,45 @@ open class HelmLint @Inject constructor() {
   var values: Map<String, String> by DefaultingDelegate { mapOf<String, String>() }
   var valuesFiles: List<Any> by DefaultingDelegate { listOf<Any>() }
 }
-
-open class HelmRepo @Inject constructor() {
+ open class BaseRepo @Inject constructor(){
+  var type by DefaultingDelegate { "helm" }
   var url by DefaultingDelegate { "https://kubernetes-charts.storage.googleapis.com/" }
+  val implementation by lazy { RepoImplementation(type) }
   var username: String? = null
   var password: String? = null
-  var chartmuseum: Boolean = false
   var authRealm: String? = null
   var requestHeaders by DefaultingDelegate { listOf<List<String>>() }
   var clientConfigurator by DefaultingDelegate { Action<OkHttpClient.Builder> {} }
+ }
+
+
+sealed class RepoImplementation {
+  companion object {
+    operator fun invoke(type: String): RepoImplementation {
+      if (type == "chartmuseum") {
+        return ChartMuseumRepo()
+      } else {
+        return HelmRepo()
+      }
+    }
+  }
+  open fun getPublishRequest(url: String, file: File ) = Request.Builder().url("$url/${file.name}").put(RequestBody.create(null, file))
 }
+
+class HelmRepo: RepoImplementation() {
+
+  override fun getPublishRequest(url: String, file: File ) = Request.Builder().url("$url/${file.name}").put(RequestBody.create(null, file))
+
+}
+
+class ChartMuseumRepo: RepoImplementation() {
+
+  override fun getPublishRequest(url: String, file: File ) = Request.Builder().url(url).post(RequestBody.create(null, file))
+
+}
+
+
+
 
 class DefaultingDelegate<T>(private val supplier: () -> T) {
   private var value: T? = null
@@ -407,10 +436,6 @@ open class PublishTask : DefaultTask() {
   fun publishChart() {
     val repo = repository()
     val file = project.file("${packageDir()}/${chartName()}-${chartVersion()}.tgz")
-    val url = "${repo.url}${(when(repo.chartmuseum) {
-      true -> ""
-      false -> "/${file.name}"
-    })}"
     val clientBuilder = OkHttpClient.Builder()
     val user = repo.username
     val pass = repo.password
@@ -422,30 +447,26 @@ open class PublishTask : DefaultTask() {
           null != response.request().header("Authorization") -> null
           challenges.isEmpty() -> null
           else -> response.request().newBuilder()
-              .header(
-                  "Authorization",
-                  when {
-                    challenges.any { it.scheme() == "Basic" && (null == realm || realm == it.realm()) } -> Credentials.basic(
-                        user,
-                        pass)
-                    else -> throw Exception("Unsupported Challenges: $challenges")
-                  }
-              )
-              .build().also { println("Authenticating with $it") }
+                  .header(
+                          "Authorization",
+                          when {
+                            challenges.any { it.scheme() == "Basic" && (null == realm || realm == it.realm()) } -> Credentials.basic(
+                                    user,
+                                    pass)
+                            else -> throw Exception("Unsupported Challenges: $challenges")
+                          }
+                  )
+                  .build()
         }
-    }
+      }
     }
     repo.clientConfigurator.execute(clientBuilder)
     val client = clientBuilder.build()
-    val request = Request.Builder()
-            .url(url)
-            .method(when(repo.chartmuseum) {
-              true -> "POST"
-              false -> "PUT"
-            },RequestBody.create(null, file))
-            .also { repo.requestHeaders.forEach { (name, value) -> it.addHeader(name, value) } }
+    val request = repo.implementation.getPublishRequest(repo.url,file)
+            .also{ repo.requestHeaders.forEach { (name, value) -> it.addHeader(name, value) } }
             .build()
-    val response = client.newCall(request).execute()
-    if (!response.isSuccessful) throw Exception("Unable to publish helm chart: $response")
+    client.newCall(request).execute().use {
+      if (!it.isSuccessful) throw Exception("Unable to publish helm chart: $it")
+    }
   }
 }

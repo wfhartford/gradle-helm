@@ -119,14 +119,14 @@ internal fun repositoryTransform(
     username: String? = "user",
     password: String? = "pass",
     realm: String? = null,
-    chartmuseum: Boolean? = null
+    type: String? = null
 ): (List<String>) -> List<String> = { lines ->
   lines.flatMap {
     if (it.contains("repository")) {
       listOf(
           "  repository {",
           "    url 'http://localhost:${server.port}'",
-          chartmuseum?.let { " chartmuseum $chartmuseum" },
+          type?.let { " type '$type'" },
           username?.let { "    username '$username'" },
           password?.let { "    password '$password'" },
           realm?.let { "    authRealm '$realm'" },

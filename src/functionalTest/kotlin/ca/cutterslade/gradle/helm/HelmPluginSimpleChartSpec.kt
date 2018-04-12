@@ -169,7 +169,7 @@ object HelmPluginSimpleChartSpec : Spek({
         it("can publish a chart to chart museum") {
           withModifiedFile(
                   projectDirectory.resolve("build.gradle"),
-                  repositoryTransform(server(), chartmuseum = true),
+                  repositoryTransform(server(), type = "chartmuseum"),
                   {
                     buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
                       taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
