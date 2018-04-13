@@ -24,8 +24,8 @@ object HelmPluginSimpleChartSpec : Spek({
   data class ChartBasics(val name: String, val version: String)
 
   val charts = listOf(
-      ChartBasics(projectName, projectVersion),
-      ChartBasics("other-test-chart", "1.0.0")
+          ChartBasics(projectName, projectVersion),
+          ChartBasics("other-test-chart", "1.0.0")
   )
 
   beforeGroup {
@@ -42,8 +42,8 @@ object HelmPluginSimpleChartSpec : Spek({
       |}
       |charts {
       |${charts.joinToString(
-        separator = "\n",
-        transform = { "  '${it.name}' {\n    chartVersion = '${it.version}'\n  }" }
+            separator = "\n",
+            transform = { "  '${it.name}' {\n    chartVersion = '${it.version}'\n  }" }
     )}
       |}
       """.trimMargin())
@@ -89,7 +89,7 @@ object HelmPluginSimpleChartSpec : Spek({
           projectDirectory.isDir("build", "helm", "home")
           projectDirectory.isFile("src", "main", "helm", chart.name, "Chart.yaml").run {
             assertTrue(Files.lines(this).anyMatch { Regex("name: \\Q${chart.name}\\E").matches(it) },
-                "Chart.yaml file missing expected line 'name: ${chart.name}'")
+                    "Chart.yaml file missing expected line 'name: ${chart.name}'")
           }
         }
 
@@ -108,130 +108,130 @@ object HelmPluginSimpleChartSpec : Spek({
 
         it("fails validation a chart in strict mode") {
           files(
-              ModifiedFile(buildFile, addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.strict = true")),
-              {
-                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
-                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
-                  assertTrue(output.contains("[ERROR] templates/: render error in "),
-                      "Expected render error message")
-                }
-              }
+                  ModifiedFile(buildFile, addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.strict = true")),
+                  {
+                    buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                      taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                      assertTrue(output.contains("[ERROR] templates/: render error in "),
+                              "Expected render error message")
+                    }
+                  }
           )
         }
 
         it("fails validation of a chart with non-semantic version") {
           files(
-              ModifiedFile(
-                  projectDirectory.resolve("src/main/helm/${chart.name}/Chart.yaml"),
-                  removeLine(Regex("version:.*"))
-              ),
-              {
-                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
-                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
-                  assertTrue(output.contains("[ERROR] Chart.yaml: version is required"),
-                      "Expected version required error")
-                }
-              }
+                  ModifiedFile(
+                          projectDirectory.resolve("src/main/helm/${chart.name}/Chart.yaml"),
+                          removeLine(Regex("version:.*"))
+                  ),
+                  {
+                    buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                      taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                      assertTrue(output.contains("[ERROR] Chart.yaml: version is required"),
+                              "Expected version required error")
+                    }
+                  }
           )
         }
 
         it("fails validation of a chart with name not matching directory") {
           files(
-              ModifiedFile(
-                  projectDirectory.resolve("src/main/helm/${chart.name}/Chart.yaml"),
-                  replaceLine(Regex("name:.*"), "name: me")
-              ),
-              {
-                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
-                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
-                  assertTrue(output.contains("[ERROR] Chart.yaml: directory name ("), "Expected directory name error")
-                }
-              }
+                  ModifiedFile(
+                          projectDirectory.resolve("src/main/helm/${chart.name}/Chart.yaml"),
+                          replaceLine(Regex("name:.*"), "name: me")
+                  ),
+                  {
+                    buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                      taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                      assertTrue(output.contains("[ERROR] Chart.yaml: directory name ("), "Expected directory name error")
+                    }
+                  }
           )
         }
 
         it("fails validation of a chart with malformed values.yaml") {
           files(
-              ModifiedFile(
-                  projectDirectory.resolve("src/main/helm/${chart.name}/values.yaml"),
-                  replaceLine(Regex("image:.*"), "image: {")
-              ),
-              {
-                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
-                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
-                  assertTrue(output.contains("[ERROR] values.yaml: unable to parse YAML"),
-                      "Expected unable to parse YAML error")
-                }
-              }
+                  ModifiedFile(
+                          projectDirectory.resolve("src/main/helm/${chart.name}/values.yaml"),
+                          replaceLine(Regex("image:.*"), "image: {")
+                  ),
+                  {
+                    buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                      taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                      assertTrue(output.contains("[ERROR] values.yaml: unable to parse YAML"),
+                              "Expected unable to parse YAML error")
+                    }
+                  }
           )
         }
 
         it("fails validation of a chart with malformed values.yaml") {
           files(
-              ModifiedFile(
-                  projectDirectory.resolve("src/main/helm/${chart.name}/values.yaml"),
-                  replaceLine(Regex("image:.*"), "image: {")
-              ),
-              {
-                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
-                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
-                  assertTrue(output.contains("[ERROR] values.yaml: unable to parse YAML"),
-                      "Expected unable to parse YAML error")
-                }
-              }
+                  ModifiedFile(
+                          projectDirectory.resolve("src/main/helm/${chart.name}/values.yaml"),
+                          replaceLine(Regex("image:.*"), "image: {")
+                  ),
+                  {
+                    buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                      taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                      assertTrue(output.contains("[ERROR] values.yaml: unable to parse YAML"),
+                              "Expected unable to parse YAML error")
+                    }
+                  }
           )
         }
 
         it("fails validation of a chart including a missing required value reference") {
           files(
-              AdditionalFile(
-                  projectDirectory.resolve("src/main/helm/${chart.name}/templates/extra.txt"),
-                  "{{ required \"missing value must be specified\" .Values.missing }}"
-              ),
-              {
-                buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
-                  taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
-                  assertTrue(output.contains("missing value must be specified"),
-                      "Expected message from required directive")
-                }
-              }
+                  AdditionalFile(
+                          projectDirectory.resolve("src/main/helm/${chart.name}/templates/extra.txt"),
+                          "{{ required \"missing value must be specified\" .Values.missing }}"
+                  ),
+                  {
+                    buildTaskForFailure(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                      taskFailed(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                      assertTrue(output.contains("missing value must be specified"),
+                              "Expected message from required directive")
+                    }
+                  }
           )
         }
 
         it("validates a chart with a required value when specified in build file") {
           files(
-              ModifiedFile(
-                  buildFile,
-                  addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.values = [missing:'hi']")
-              ),
-              AdditionalFile(
-                  projectDirectory.resolve("src/main/helm/${chart.name}/templates/extra.txt"),
-                  "{{ required \"missing value must be specified\" .Values.missing }}"
-              ),
-              {
-                buildTask(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
-                  taskSuccess(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
-                }
-              }
+                  ModifiedFile(
+                          buildFile,
+                          addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.values = [missing:'hi']")
+                  ),
+                  AdditionalFile(
+                          projectDirectory.resolve("src/main/helm/${chart.name}/templates/extra.txt"),
+                          "{{ required \"missing value must be specified\" .Values.missing }}"
+                  ),
+                  {
+                    buildTask(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                      taskSuccess(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                    }
+                  }
           )
         }
 
         it("validates a chart with a required value when specified in values file") {
           files(
-              ModifiedFile(
-                  buildFile,
-                  addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.valuesFiles = ['values.yaml']")
-              ),
-              AdditionalFile(projectDirectory.resolve("values.yaml"), "missing: hi"),
-              AdditionalFile(
-                  projectDirectory.resolve("src/main/helm/${chart.name}/templates/extra.txt"),
-                  "{{ required \"missing value must be specified\" .Values.missing }}"
-              ),
-              {
-                buildTask(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
-                  taskSuccess(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
-                }
-              }
+                  ModifiedFile(
+                          buildFile,
+                          addLineFollowing(Regex(".*\\Q'${chart.name}'\\E \\{.*"), "lint.valuesFiles = ['values.yaml']")
+                  ),
+                  AdditionalFile(projectDirectory.resolve("values.yaml"), "missing: hi"),
+                  AdditionalFile(
+                          projectDirectory.resolve("src/main/helm/${chart.name}/templates/extra.txt"),
+                          "{{ required \"missing value must be specified\" .Values.missing }}"
+                  ),
+                  {
+                    buildTask(projectDirectory, HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart)).run {
+                      taskSuccess(HelmPlugin.LINT_TASK_NAME_FORMAT.task(chart))
+                    }
+                  }
           )
         }
 
@@ -253,91 +253,112 @@ object HelmPluginSimpleChartSpec : Spek({
             }
           }
         }
+
+        it("can publish a chart to chart museum") {
+          files(
+                  ModifiedFile(buildFile, repositoryTransform(server(), type = "chartmuseum")),
+                  {
+                    buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+                      taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+                      taskSuccess(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+                      server().handler.let {
+                        assertEquals(1, it.requests.size, "Published with a single request")
+                        assertEquals(Method.POST, it.requests[0].method, "Publish request method")
+                        assertEquals("/", it.requests[0].path, "Publish request path")
+                        projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz").run {
+                          assertEquals(toFile().length(), it.requests[0].contentLength, "Published package size")
+                        }
+                      }
+                    }
+                  }
+          )
+        }
+
         it("cannot publish a chart if server requires authentication and none provided") {
           server().handler.requireAuth = true
           buildTaskForFailure(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
             taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
             taskFailed(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
             assertTrue(output.contains("code=401, message=Unauthorized"),
-                "Build output should contain 'Response : Unauthorized'")
+                    "Build output should contain 'Response : Unauthorized'")
           }
         }
 
         it("can publish a chart if server requires authentication and correct credentials provided no realm") {
           files(
-              ModifiedFile(buildFile, repositoryTransform(server())),
-              {
-                server().handler.requireAuth = true
-                buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
-                  taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
-                  taskSuccess(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
-                  server().handler.let {
-                    assertEquals(2, it.requests.size, "Required two requests")
-                    assertFalse(it.requests[0].hasHeader("Authorization"),
-                        "First request has no authorization: ${it.requests[0]}")
-                    assertTrue(it.requests[1].hasHeader("Authorization"),
-                        "Second request has authorization: ${it.requests[1]}")
-                    it.requests.forEachIndexed { index, request ->
-                      assertEquals(Method.PUT, request.method, "Publish request[$index] method: $request")
-                      assertEquals("/${chart.name}-${chart.version}.tgz",
-                          request.path,
-                          "Publish request[$index] path: $request")
-                      projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz").run {
-                        assertEquals(toFile().length(),
-                            request.contentLength,
-                            "Published package size in request[$index]: $request")
+                  ModifiedFile(buildFile, repositoryTransform(server())),
+                  {
+                    server().handler.requireAuth = true
+                    buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+                      taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+                      taskSuccess(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+                      server().handler.let {
+                        assertEquals(2, it.requests.size, "Required two requests")
+                        assertFalse(it.requests[0].hasHeader("Authorization"),
+                                "First request has no authorization: ${it.requests[0]}")
+                        assertTrue(it.requests[1].hasHeader("Authorization"),
+                                "Second request has authorization: ${it.requests[1]}")
+                        it.requests.forEachIndexed { index, request ->
+                          assertEquals(Method.PUT, request.method, "Publish request[$index] method: $request")
+                          assertEquals("/${chart.name}-${chart.version}.tgz",
+                                  request.path,
+                                  "Publish request[$index] path: $request")
+                          projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz").run {
+                            assertEquals(toFile().length(),
+                                    request.contentLength,
+                                    "Published package size in request[$index]: $request")
+                          }
+                        }
                       }
                     }
                   }
-                }
-              }
           )
         }
         it("can publish a chart if server requires authentication and correct credentials provided with realm") {
           files(
-              ModifiedFile(buildFile, repositoryTransform(server(), realm = "test")),
-              {
-                server().handler.requireAuth = true
-                buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
-                  taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
-                  taskSuccess(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
-                  server().handler.let {
-                    assertEquals(2, it.requests.size, "Required two requests")
-                    assertFalse(it.requests[0].hasHeader("Authorization"),
-                        "First request has no authorization: ${it.requests[0]}")
-                    assertTrue(it.requests[1].hasHeader("Authorization"),
-                        "Second request has authorization: ${it.requests[1]}")
-                    it.requests.forEachIndexed { index, request ->
-                      assertEquals(Method.PUT, request.method, "Publish request[$index] method: $request")
-                      assertEquals("/${chart.name}-${chart.version}.tgz",
-                          request.path,
-                          "Publish request[$index] path: $request")
-                      projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz").run {
-                        assertEquals(toFile().length(),
-                            request.contentLength,
-                            "Published package size in request[$index]: $request")
+                  ModifiedFile(buildFile, repositoryTransform(server(), realm = "test")),
+                  {
+                    server().handler.requireAuth = true
+                    buildTask(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+                      taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+                      taskSuccess(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+                      server().handler.let {
+                        assertEquals(2, it.requests.size, "Required two requests")
+                        assertFalse(it.requests[0].hasHeader("Authorization"),
+                                "First request has no authorization: ${it.requests[0]}")
+                        assertTrue(it.requests[1].hasHeader("Authorization"),
+                                "Second request has authorization: ${it.requests[1]}")
+                        it.requests.forEachIndexed { index, request ->
+                          assertEquals(Method.PUT, request.method, "Publish request[$index] method: $request")
+                          assertEquals("/${chart.name}-${chart.version}.tgz",
+                                  request.path,
+                                  "Publish request[$index] path: $request")
+                          projectDirectory.isFile("build", "helm", "package", "${chart.name}-${chart.version}.tgz").run {
+                            assertEquals(toFile().length(),
+                                    request.contentLength,
+                                    "Published package size in request[$index]: $request")
+                          }
+                        }
                       }
                     }
                   }
-                }
-              }
           )
         }
         it("cannot publish a chart if server requires authentication and correct credentials provided with wrong realm") {
           files(
-              ModifiedFile(buildFile, repositoryTransform(server(), realm = "bunk")),
-              {
-                server().handler.requireAuth = true
-                buildTaskForFailure(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
-                  taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
-                  taskFailed(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
-                  server().handler.let {
-                    assertEquals(1, it.requests.size, "Executed one request")
-                    assertFalse(it.requests[0].hasHeader("Authorization"),
-                        "Request has no authorization: ${it.requests[0]}")
+                  ModifiedFile(buildFile, repositoryTransform(server(), realm = "bunk")),
+                  {
+                    server().handler.requireAuth = true
+                    buildTaskForFailure(projectDirectory, HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart)).run {
+                      taskUpToDate(HelmPlugin.PACKAGE_TASK_NAME_FORMAT.task(chart))
+                      taskFailed(HelmPlugin.PUBLISH_TASK_NAME_FORMAT.task(chart))
+                      server().handler.let {
+                        assertEquals(1, it.requests.size, "Executed one request")
+                        assertFalse(it.requests[0].hasHeader("Authorization"),
+                                "Request has no authorization: ${it.requests[0]}")
+                      }
+                    }
                   }
-                }
-              }
           )
         }
       }
