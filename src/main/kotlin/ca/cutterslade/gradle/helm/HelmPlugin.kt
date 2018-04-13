@@ -55,20 +55,20 @@ open class HelmPlugin : Plugin<Project> {
     val PUBLISH_TASK_NAME_FORMAT = "publish%sChart"
 
     val CONSTANT_TASKS_NAMES = setOf(
-            VERIFY_ARCH_TASK_NAME,
-            VERIFY_OS_TASK_NAME,
-            VERIFY_TASK_NAME,
-            DOWNLOAD_TASK_NAME,
-            INSTALL_TASK_NAME,
-            INITIALIZE_TASK_NAME
+        VERIFY_ARCH_TASK_NAME,
+        VERIFY_OS_TASK_NAME,
+        VERIFY_TASK_NAME,
+        DOWNLOAD_TASK_NAME,
+        INSTALL_TASK_NAME,
+        INITIALIZE_TASK_NAME
     )
 
     val VARIABLE_TASK_NAME_FORMATS = setOf(
-            ENSURE_NO_CHART_TASK_NAME_FORMAT,
-            CREATE_TASK_NAME_FORMAT,
-            LINT_TASK_NAME_FORMAT,
-            PACKAGE_TASK_NAME_FORMAT,
-            PUBLISH_TASK_NAME_FORMAT
+        ENSURE_NO_CHART_TASK_NAME_FORMAT,
+        CREATE_TASK_NAME_FORMAT,
+        LINT_TASK_NAME_FORMAT,
+        PACKAGE_TASK_NAME_FORMAT,
+        PUBLISH_TASK_NAME_FORMAT
     )
 
     val VARIABLE_TASK_NAME_REGEXES = VARIABLE_TASK_NAME_FORMATS.map { it.replace("%s", "\\w+") }.map { Regex(it) }
@@ -76,7 +76,7 @@ open class HelmPlugin : Plugin<Project> {
     val SUPPORTED_ARCHITECTURES = setOf("amd64", "x86_64")
 
     fun chartTaskName(format: String, chartName: String) =
-            format.format(chartName.split('-').joinToString("", transform = String::capitalize))
+        format.format(chartName.split('-').joinToString("", transform = String::capitalize))
   }
 
   private fun Task.desc(desc: String) {
@@ -88,10 +88,10 @@ open class HelmPlugin : Plugin<Project> {
     project.run {
       plugins.apply(JavaBasePlugin::class.java)
       val sourceSet = withJava { sourceSets.create(HELM_SOURCE_SET_NAME) }
-              .apply {
-                resources.setSrcDirs(listOf(project.file("src/main/helm")))
-                java.setSrcDirs(listOf<File>())
-              }
+          .apply {
+            resources.setSrcDirs(listOf(project.file("src/main/helm")))
+            java.setSrcDirs(listOf<File>())
+          }
       extensions.create(HELM_EXTENSION_NAME, HelmExtension::class.java, project, objects)
 
       val charts = container(HelmChart::class.java) { name -> HelmChart(name, project, objects) }
@@ -155,9 +155,9 @@ open class HelmPlugin : Plugin<Project> {
               desc("Validate the chart ${chart.name} using the helm package command.")
               taskChart = chart
               dependsOn(
-                      lintTask,
-                      sourceSet.processResourcesTaskName,
-                      *verifyAndInitialize
+                  lintTask,
+                  sourceSet.processResourcesTaskName,
+                  *verifyAndInitialize
               )
               tasks["assemble"].dependsOn(this)
             }
@@ -217,7 +217,7 @@ open class HelmLint @Inject constructor() {
   var valuesFiles: List<Any> by DefaultingDelegate { listOf<Any>() }
 }
 
- open class BaseRepo @Inject constructor(){
+open class BaseRepo @Inject constructor() {
   var type by DefaultingDelegate { "helm" }
   var url by DefaultingDelegate { "https://kubernetes-charts.storage.googleapis.com/" }
   val implementation by lazy { RepoImplementation(type) }
@@ -234,28 +234,26 @@ sealed class RepoImplementation {
     operator fun invoke(type: String): RepoImplementation {
       return if (type == "chartmuseum") {
         ChartMuseumRepo()
-      } else {
+      }
+      else {
         HelmRepo()
       }
     }
   }
-  open fun getPublishRequest(url: String, file: File ) = Request.Builder().url("$url/${file.name}").put(RequestBody.create(null, file))
+
+  open fun getPublishRequest(url: String, file: File) =
+      Request.Builder().url("$url/${file.name}").put(RequestBody.create(null, file))
 }
 
-class HelmRepo: RepoImplementation() {
-
-  override fun getPublishRequest(url: String, file: File ) = Request.Builder().url("$url/${file.name}").put(RequestBody.create(null, file))
-
+class HelmRepo : RepoImplementation() {
+  override fun getPublishRequest(url: String, file: File) =
+      Request.Builder().url("$url/${file.name}").put(RequestBody.create(null, file))
 }
 
-class ChartMuseumRepo: RepoImplementation() {
-
-  override fun getPublishRequest(url: String, file: File ) = Request.Builder().url(url).post(RequestBody.create(null, file))
-
+class ChartMuseumRepo : RepoImplementation() {
+  override fun getPublishRequest(url: String, file: File) =
+      Request.Builder().url(url).post(RequestBody.create(null, file))
 }
-
-
-
 
 class DefaultingDelegate<T>(private val supplier: () -> T) {
   private var value: T? = null
@@ -266,9 +264,9 @@ class DefaultingDelegate<T>(private val supplier: () -> T) {
 }
 
 enum class OperatingSystem(
-        private val osNamePrefix: String,
-        private val executableSuffix: String = "",
-        private val filenamePart: String = osNamePrefix
+    private val osNamePrefix: String,
+    private val executableSuffix: String = "",
+    private val filenamePart: String = osNamePrefix
 ) {
   WINDOWS("windows", executableSuffix = ".exe"),
   LINUX("linux"),
@@ -277,12 +275,12 @@ enum class OperatingSystem(
   companion object {
     fun detect() = System.getProperty("os.name").toLowerCase().let { osName ->
       values().firstOrNull { osName.startsWith(it.osNamePrefix) }
-              ?: throw UnsupportedOperationException("Unsupported operating system: $osName")
+          ?: throw UnsupportedOperationException("Unsupported operating system: $osName")
     }
   }
 
   fun url(install: HelmInstallation) =
-          "https://storage.googleapis.com/kubernetes-helm/${filename(install)}"
+      "https://storage.googleapis.com/kubernetes-helm/${filename(install)}"
 
   fun filename(install: HelmInstallation) = "helm-${install.version}-$filenamePart-amd64.tar.gz"
 
@@ -290,7 +288,7 @@ enum class OperatingSystem(
 }
 
 internal fun <T> Project.withJava(function: JavaPluginConvention.() -> T): T =
-        withConvention(JavaPluginConvention::class, function)
+    withConvention(JavaPluginConvention::class, function)
 
 internal fun Project.helm(): HelmExtension = extensions.getByType(HelmExtension::class.java)
 internal fun Task.helm() = project.helm()
@@ -355,8 +353,8 @@ open class InitializeTask : HelmExecTask() {
 
   override fun helmArgs() = listOf(CommandLineArgumentProvider {
     listOf(
-            "init",
-            "--client-only"
+        "init",
+        "--client-only"
     )
   })
 }
@@ -412,15 +410,15 @@ open class LintTask : HelmChartExecTask() {
   val valuesFile = Callable { taskChart.lint.valuesFiles }
 
   override fun helmArgs() = listOf(
-          CommandLineArgumentProvider { listOf("lint") },
-          CommandLineArgumentProvider { if (strict()) listOf("--strict") else listOf() },
-          CommandLineArgumentProvider { values().entries.flatMap { (key, value) -> listOf("--set", "$key=$value") } },
-          CommandLineArgumentProvider {
-            valuesFile().flatMap { file ->
-              listOf("--values", project.file(file).toString())
-            }
-          },
-          CommandLineArgumentProvider { listOf(chartDir().toString()) }
+      CommandLineArgumentProvider { listOf("lint") },
+      CommandLineArgumentProvider { if (strict()) listOf("--strict") else listOf() },
+      CommandLineArgumentProvider { values().entries.flatMap { (key, value) -> listOf("--set", "$key=$value") } },
+      CommandLineArgumentProvider {
+        valuesFile().flatMap { file ->
+          listOf("--values", project.file(file).toString())
+        }
+      },
+      CommandLineArgumentProvider { listOf(chartDir().toString()) }
   )
 }
 
@@ -433,12 +431,12 @@ open class PackageTask : HelmChartExecTask() {
 
   override fun helmArgs() = listOf(CommandLineArgumentProvider {
     listOf(
-            "package",
-            "--app-version", appVersion(),
-            "--version", chartVersion(),
-            "--destination", packageFile().parent,
-            "--save=false",
-            chart().toString()
+        "package",
+        "--app-version", appVersion(),
+        "--version", chartVersion(),
+        "--destination", packageFile().parent,
+        "--save=false",
+        chart().toString()
     )
   })
 }
@@ -471,24 +469,24 @@ open class PublishTask : DefaultTask() {
           null != response.request().header("Authorization") -> null
           challenges.isEmpty() -> null
           else -> response.request().newBuilder()
-                  .header(
-                          "Authorization",
-                          when {
-                            challenges.any { it.scheme() == "Basic" && (null == realm || realm == it.realm()) } -> Credentials.basic(
-                                    user,
-                                    pass)
-                            else -> throw Exception("Unsupported Challenges: $challenges")
-                          }
-                  )
-                  .build()
+              .header(
+                  "Authorization",
+                  when {
+                    challenges.any { it.scheme() == "Basic" && (null == realm || realm == it.realm()) } -> Credentials.basic(
+                        user,
+                        pass)
+                    else -> throw Exception("Unsupported Challenges: $challenges")
+                  }
+              )
+              .build()
         }
       }
     }
     repo.clientConfigurator.execute(clientBuilder)
     val client = clientBuilder.build()
-    val request = repo.implementation.getPublishRequest(repo.url,file)
-            .also{ repo.requestHeaders.forEach { (name, value) -> it.addHeader(name, value) } }
-            .build()
+    val request = repo.implementation.getPublishRequest(repo.url, file)
+        .also { repo.requestHeaders.forEach { (name, value) -> it.addHeader(name, value) } }
+        .build()
     client.newCall(request).execute().use {
       if (!it.isSuccessful) throw Exception("Unable to publish helm chart: $it")
     }

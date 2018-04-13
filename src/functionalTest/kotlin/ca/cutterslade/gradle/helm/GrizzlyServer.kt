@@ -33,22 +33,22 @@ class GrizzlyServer : AutoCloseable {
 }
 
 data class RequestDetails(
-        val method: Method,
-        val host: String,
-        val path: String,
-        val contentLength: Long,
-        val headers: List<Pair<String, String>>
+    val method: Method,
+    val host: String,
+    val path: String,
+    val contentLength: Long,
+    val headers: List<Pair<String, String>>
 ) {
   constructor(request: Request) :
-          this(
-                  request.method,
-                  request.getHeader(Header.Host),
-                  request.httpHandlerPath,
-                  request.contentLengthLong,
-                  request.headerNames.flatMap { name ->
-                    request.getHeaders(name).map { name to it }
-                  }
-          )
+      this(
+          request.method,
+          request.getHeader(Header.Host),
+          request.httpHandlerPath,
+          request.contentLengthLong,
+          request.headerNames.flatMap { name ->
+            request.getHeaders(name).map { name to it }
+          }
+      )
 
   fun hasHeader(name: String) = headers.any { it.first.toLowerCase() == name.toLowerCase() }
 }
