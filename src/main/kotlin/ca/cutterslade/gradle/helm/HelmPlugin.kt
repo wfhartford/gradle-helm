@@ -29,6 +29,7 @@ import org.gradle.kotlin.dsl.invoke
 import org.gradle.kotlin.dsl.withConvention
 import org.gradle.process.CommandLineArgumentProvider
 import java.io.File
+import java.net.Proxy
 import java.net.URL
 import java.nio.file.Files
 import java.util.concurrent.Callable
@@ -308,7 +309,13 @@ open class DownloadTask : DefaultTask() {
     val loc = location()
     loc.parentFile.mkdirs()
     if (!loc.isFile) {
-      URL(url()).openStream().use {
+      val socketAddress = HttpProxySettingsHandler().socketAddress
+      val proxy = if (socketAddress.isPresent) {
+        Proxy(Proxy.Type.HTTP, socketAddress.get())
+      } else {
+        Proxy.NO_PROXY
+      }
+      URL(url()).openConnection(proxy).inputStream.use {
         Files.copy(it, loc.toPath())
       }
     }

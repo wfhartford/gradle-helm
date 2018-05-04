@@ -90,3 +90,6 @@ For each chart configured in the build file, the plugin will create a set of tas
 | lint${chartName}Chart | Validate the chart by executing the 'helm lint' command. | `ca.cutterslade.gradle.helm.LintTask` |
 | package${chartName}Chart | Package the chart by executing the 'helm package' command. | `ca.cutterslade.gradle.helm.PackageTask` |
 | publish${chartName}Chart | Publish the chart to the configured repository. | `ca.cutterslade.gradle.helm.PublishTask` |
+
+## Proxy's
+The environment settings for `http_proxy`, `https_proxy` and `no_proxy` (case-insensitive) are respected.
