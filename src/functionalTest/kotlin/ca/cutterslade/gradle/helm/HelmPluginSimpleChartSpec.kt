@@ -2,10 +2,12 @@ package ca.cutterslade.gradle.helm
 
 import com.google.common.io.MoreFiles
 import com.google.common.io.RecursiveDeleteOption
+import mu.KotlinLogging
 import org.glassfish.grizzly.http.Method
 import org.jetbrains.spek.api.Spek
 import org.jetbrains.spek.api.dsl.describe
 import org.jetbrains.spek.api.dsl.it
+import java.nio.file.FileSystemException
 import java.nio.file.Files
 import java.nio.file.Path
 import kotlin.test.assertEquals
@@ -13,6 +15,8 @@ import kotlin.test.assertFalse
 import kotlin.test.assertTrue
 
 object HelmPluginSimpleChartSpec : Spek({
+  val logger = KotlinLogging.logger {}
+
   val projectName = "create-helm-chart-functional-test-build"
   val projectVersion = "0.1.0"
   val projectDirectory: Path = Files.createTempDirectory(HelmPluginSimpleChartSpec::class.simpleName)
@@ -57,7 +61,11 @@ object HelmPluginSimpleChartSpec : Spek({
   afterGroup {
     server().close()
     _server = null
-    MoreFiles.deleteRecursively(projectDirectory, RecursiveDeleteOption.ALLOW_INSECURE)
+    try {
+      MoreFiles.deleteRecursively(projectDirectory, RecursiveDeleteOption.ALLOW_INSECURE)
+    } catch (e: FileSystemException) {
+      logger.warn(e) { "Unable to delete created test directory... this is a common issue on Windows because of it's file locking protocols." }
+    }
   }
 
   fun String.task(chart: ChartBasics) = HelmPlugin.chartTaskName(this, chart.name)

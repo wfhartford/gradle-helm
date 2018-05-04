@@ -41,9 +41,13 @@ dependencies {
   compile(kotlin("reflect"))
   compile(gradleApi())
   compile("com.squareup.okhttp3:okhttp:3.10.0")
+  compile("io.github.microutils:kotlin-logging:1.5.4")
 
   testCompile(kotlin("test"))
   testCompile("org.jetbrains.spek:spek-junit-platform-engine:1.1.5")
+
+  // because the tests were alredy written using kotlintest
+  testCompile("io.kotlintest:kotlintest:2.0.7")
 
   add("functionalTestCompile", kotlin("test"))
   add("functionalTestCompile", "org.jetbrains.spek:spek-api:1.1.5")
