@@ -24,6 +24,7 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskAction
+import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.invoke
 import org.gradle.kotlin.dsl.withConvention
@@ -98,7 +99,7 @@ open class HelmPlugin : Plugin<Project> {
       extensions.add(CHARTS_EXTENSION_NAME, charts)
 
       tasks {
-        val archTask = VERIFY_ARCH_TASK_NAME {
+        val archTask = create(VERIFY_ARCH_TASK_NAME) {
           desc("Ensure that the architecture is supported by helm.")
           doLast {
             System.getProperty("os.arch").let { arch ->
@@ -108,25 +109,25 @@ open class HelmPlugin : Plugin<Project> {
             }
           }
         }
-        val osTask = VERIFY_OS_TASK_NAME {
+        val osTask = create(VERIFY_OS_TASK_NAME) {
           desc("Ensure that the operating system is supported by helm.")
           doLast {
             OperatingSystem.detect()
           }
         }
-        val verifyTask = VERIFY_TASK_NAME {
+        val verifyTask = create(VERIFY_TASK_NAME) {
           desc("Ensure that the system is supported by helm.")
           dependsOn(archTask, osTask)
         }
-        val downloadTask = DOWNLOAD_TASK_NAME(DownloadTask::class) {
+        val downloadTask = create(DOWNLOAD_TASK_NAME, DownloadTask::class) {
           desc("Download the helm distribution.")
           dependsOn(verifyTask)
         }
-        val installTask = INSTALL_TASK_NAME(InstallTask::class) {
+        val installTask = create(INSTALL_TASK_NAME, InstallTask::class) {
           desc("Install helm locally.")
           dependsOn(verifyTask, downloadTask)
         }
-        INITIALIZE_TASK_NAME(InitializeTask::class) {
+        create(INITIALIZE_TASK_NAME, InitializeTask::class) {
           desc("Initialise the local helm installation.")
           dependsOn(verifyTask, installTask)
         }
@@ -136,22 +137,25 @@ open class HelmPlugin : Plugin<Project> {
         tasks {
           charts.forEach { chart ->
             val verifyAndInitialize = arrayOf(tasks[VERIFY_TASK_NAME], tasks[INITIALIZE_TASK_NAME])
-            val ensureNoChartTask = chart.formatName(ENSURE_NO_CHART_TASK_NAME_FORMAT)(EnsureNoChartTask::class) {
+            val ensureNoChartTask = create(
+                chart.formatName(ENSURE_NO_CHART_TASK_NAME_FORMAT),
+                EnsureNoChartTask::class
+            ) {
               desc("Ensure that the chart ${chart.name} does not exist.")
               taskChart = chart
             }
-            chart.formatName(CREATE_TASK_NAME_FORMAT)(CreateChartTask::class) {
+            create(chart.formatName(CREATE_TASK_NAME_FORMAT), CreateChartTask::class) {
               desc("Create the chart ${chart.name} using the helm create command.")
               taskChart = chart
               dependsOn(ensureNoChartTask, *verifyAndInitialize)
             }
-            val lintTask = chart.formatName(LINT_TASK_NAME_FORMAT)(LintTask::class) {
+            val lintTask = create(chart.formatName(LINT_TASK_NAME_FORMAT), LintTask::class) {
               desc("Validate the chart ${chart.name} using the helm lint command.")
               taskChart = chart
               dependsOn(sourceSet.processResourcesTaskName, *verifyAndInitialize)
               tasks["check"].dependsOn(this)
             }
-            val packageTask = chart.formatName(PACKAGE_TASK_NAME_FORMAT)(PackageTask::class) {
+            val packageTask = create(chart.formatName(PACKAGE_TASK_NAME_FORMAT), PackageTask::class) {
               desc("Validate the chart ${chart.name} using the helm package command.")
               taskChart = chart
               dependsOn(
@@ -161,7 +165,7 @@ open class HelmPlugin : Plugin<Project> {
               )
               tasks["assemble"].dependsOn(this)
             }
-            chart.formatName(PUBLISH_TASK_NAME_FORMAT)(PublishTask::class) {
+            create(chart.formatName(PUBLISH_TASK_NAME_FORMAT), PublishTask::class) {
               desc("Publish the chart ${chart.name} to the configured chart repository.")
               taskChart = chart
               dependsOn(packageTask)
