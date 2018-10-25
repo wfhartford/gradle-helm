@@ -20,47 +20,47 @@ plugins {
   `java-gradle-plugin`
   `kotlin-dsl`
   `junit-test-suite`
-  kotlin("jvm") version "1.2.31"
-  id("com.gradle.plugin-publish") version "0.9.10"
+  kotlin("jvm") version "1.2.61"
+  id("com.gradle.plugin-publish") version "0.10.0"
 }
 
-java.sourceSets.create("functionalTest") {
-  compileClasspath += project.java.sourceSets["main"].output
+sourceSets.create("functionalTest") {
+  compileClasspath += sourceSets["main"].output
   runtimeClasspath += output
   runtimeClasspath += compileClasspath
-  runtimeClasspath += project.configurations["runtime"]
-  runtimeClasspath += project.configurations["functionalTestRuntime"]
+  runtimeClasspath += configurations["runtime"]
+  runtimeClasspath += configurations["functionalTestRuntime"]
 }
 
-project.configurations["functionalTestCompile"].extendsFrom(project.configurations["compile"])
-project.configurations["functionalTestRuntime"].extendsFrom(project.configurations["runtime"])
+configurations["functionalTestCompile"].extendsFrom(configurations["compile"])
+configurations["functionalTestRuntime"].extendsFrom(configurations["runtime"])
 
 dependencies {
   compile(kotlin("stdlib"))
   compile(kotlin("stdlib-jre8"))
   compile(kotlin("reflect"))
   compile(gradleApi())
-  compile("com.squareup.okhttp3:okhttp:3.10.0")
+  compile("com.squareup.okhttp3:okhttp:3.11.0")
 
   testCompile(kotlin("test"))
   testCompile("org.jetbrains.spek:spek-junit-platform-engine:1.1.5")
 
   add("functionalTestCompile", kotlin("test"))
   add("functionalTestCompile", "org.jetbrains.spek:spek-api:1.1.5")
-  add("functionalTestCompile", "com.google.guava:guava:24.1-jre")
-  add("functionalTestCompile", "org.glassfish.grizzly:grizzly-http-server:2.4.0")
-  add("functionalTestRuntime", "org.junit.platform:junit-platform-engine:1.1.0")
+  add("functionalTestCompile", "com.google.guava:guava:27.0-jre")
+  add("functionalTestCompile", "org.glassfish.grizzly:grizzly-http-server:2.4.3")
+  add("functionalTestRuntime", "org.junit.platform:junit-platform-engine:1.3.1")
   add("functionalTestRuntime", "org.jetbrains.spek:spek-junit-platform-engine:1.1.5")
 }
 
 gradlePlugin {
-  (plugins) {
-    "gradle-helm" {
+  plugins {
+    create("helm") {
       id = "ca.cutterslade.helm"
       implementationClass = "ca.cutterslade.gradle.helm.HelmPlugin"
     }
   }
-  testSourceSets(java.sourceSets["functionalTest"])
+  testSourceSets(sourceSets["functionalTest"])
 }
 
 pluginBundle {
@@ -81,10 +81,10 @@ pluginBundle {
 tasks["publishPlugins"].dependsOn(tasks["check"])
 
 tasks {
-  "functionalTest"(Test::class) {
+  create<Test>("functionalTest") {
     useJUnitPlatform()
-    testClassesDirs = java.sourceSets["functionalTest"].output.classesDirs
-    classpath = java.sourceSets["functionalTest"].runtimeClasspath
+    testClassesDirs = sourceSets["functionalTest"].output.classesDirs
+    classpath = sourceSets["functionalTest"].runtimeClasspath
     mustRunAfter("test")
   }.also { tasks["check"].dependsOn(it) }
 
