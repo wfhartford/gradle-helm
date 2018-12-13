@@ -83,22 +83,39 @@ object HelmPluginNonSourceTasksSpec : Spek({
       projectDirectory.isDir("build", "helm", "home", "repository")
       projectDirectory.isDir("build", "helm", "home", "starters")
     }
+    successThenUpToDate(projectDirectory, HelmPlugin.GET_VERSION_TASK_NAME)
+    it("can ${HelmPlugin.CHECK_VERSION_TASK_NAME}") {
+      buildTask(projectDirectory, HelmPlugin.CHECK_VERSION_TASK_NAME).run {
+        taskSuccess(HelmPlugin.CHECK_VERSION_TASK_NAME)
+      }
+    }
+
+    it("installs configured helm version") {
+      files(
+          ModifiedFile(
+              buildFile,
+              addLineFollowing("plugins .*", "helm { install { version = 'v2.11.0' } }")
+          )
+      ) {
+        buildTask(projectDirectory, HelmPlugin.CHECK_VERSION_TASK_NAME)
+            .taskSuccess(HelmPlugin.CHECK_VERSION_TASK_NAME)
+      }
+    }
 
     it("generates the helm source set") {
       files(
           ModifiedFile(
               buildFile,
               addLineFollowing("plugins .*", "task listSourceSets { doLast { println \"SOURCE-SETS: \$sourceSets\" } }")
-          ),
-          {
-            buildTask(projectDirectory, "listSourceSets").run {
-              taskSuccess("listSourceSets")
-              output.lines().find { it.startsWith("SOURCE-SETS: [") }?.let {
-                assertEquals("SOURCE-SETS: [source set 'helm']", it, "Unexpected source sets output")
-              } ?: fail("Could not find expected SOURCE-SETS line in output: \n$output")
-            }
-          }
-      )
+          )
+      ) {
+        buildTask(projectDirectory, "listSourceSets").run {
+          taskSuccess("listSourceSets")
+          output.lines().find { it.startsWith("SOURCE-SETS: [") }?.let {
+            assertEquals("SOURCE-SETS: [source set 'helm']", it, "Unexpected source sets output")
+          } ?: fail("Could not find expected SOURCE-SETS line in output: \n$output")
+        }
+      }
     }
 
     it("generates the helm source set having the expected resource directory") {
@@ -107,18 +124,17 @@ object HelmPluginNonSourceTasksSpec : Spek({
               buildFile,
               addLineFollowing("plugins .*",
                   "task listHelmResourceDirs { doLast { println \"HELM-RESOURCES: \${sourceSets.helm.resources.srcDirs}\" } }")
-          ),
-          {
-            buildTask(projectDirectory, "listHelmResourceDirs").run {
-              taskSuccess("listHelmResourceDirs")
-              output.lines().find { it.startsWith("HELM-RESOURCES: [") }?.let {
-                assertEquals(
-                    "HELM-RESOURCES: [${projectDirectory.resolve("src/main/helm")}]", it,
-                    "Unexpected resource directories")
-              } ?: fail("Could not find expected HELM-RESOURCES line in output: \n$output")
-            }
-          }
-      )
+          )
+      ) {
+        buildTask(projectDirectory, "listHelmResourceDirs").run {
+          taskSuccess("listHelmResourceDirs")
+          output.lines().find { it.startsWith("HELM-RESOURCES: [") }?.let {
+            assertEquals(
+                "HELM-RESOURCES: [${projectDirectory.resolve("src/main/helm")}]", it,
+                "Unexpected resource directories")
+          } ?: fail("Could not find expected HELM-RESOURCES line in output: \n$output")
+        }
+      }
     }
 
     it("generates the helm source set having the expected resource output directory") {
@@ -127,18 +143,17 @@ object HelmPluginNonSourceTasksSpec : Spek({
               buildFile,
               addLineFollowing("plugins .*",
                   "task listHelmOutputDirs { doLast { println \"HELM-OUTPUT: \${sourceSets.helm.output.resourcesDir}\" } }")
-          ),
-          {
-            buildTask(projectDirectory, "listHelmOutputDirs").run {
-              taskSuccess("listHelmOutputDirs")
-              output.lines().find { it.startsWith("HELM-OUTPUT: ") }?.let {
-                assertEquals(
-                    "HELM-OUTPUT: ${projectDirectory.resolve("build/resources/helm")}", it,
-                    "Unexpected resource output directories")
-              } ?: fail("Could not find expected HELM-OUTPUT line in output: \n$output")
-            }
-          }
-      )
+          )
+      ) {
+        buildTask(projectDirectory, "listHelmOutputDirs").run {
+          taskSuccess("listHelmOutputDirs")
+          output.lines().find { it.startsWith("HELM-OUTPUT: ") }?.let {
+            assertEquals(
+                "HELM-OUTPUT: ${projectDirectory.resolve("build/resources/helm")}", it,
+                "Unexpected resource output directories")
+          } ?: fail("Could not find expected HELM-OUTPUT line in output: \n$output")
+        }
+      }
     }
 
     it("generates the helm source set having no java source directories") {
@@ -147,18 +162,17 @@ object HelmPluginNonSourceTasksSpec : Spek({
               buildFile,
               addLineFollowing("plugins .*",
                   "task listHelmJavaDirs { doLast { println \"HELM-JAVA: \${sourceSets.helm.java.srcDirs}\" } }")
-          ),
-          {
-            buildTask(projectDirectory, "listHelmJavaDirs").run {
-              taskSuccess("listHelmJavaDirs")
-              output.lines().find { it.startsWith("HELM-JAVA: [") }?.let {
-                assertEquals(
-                    "HELM-JAVA: []", it,
-                    "Unexpected java directories")
-              } ?: fail("Could not find expected HELM-JAVA line in output: \n$output")
-            }
-          }
-      )
+          )
+      ) {
+        buildTask(projectDirectory, "listHelmJavaDirs").run {
+          taskSuccess("listHelmJavaDirs")
+          output.lines().find { it.startsWith("HELM-JAVA: [") }?.let {
+            assertEquals(
+                "HELM-JAVA: []", it,
+                "Unexpected java directories")
+          } ?: fail("Could not find expected HELM-JAVA line in output: \n$output")
+        }
+      }
     }
   }
 })
