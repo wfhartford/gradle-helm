@@ -13,7 +13,6 @@ import org.gradle.api.internal.AbstractTask
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPluginConvention
-import org.gradle.api.tasks.AbstractCopyTask
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
@@ -25,6 +24,7 @@ import org.gradle.api.tasks.OutputDirectory
 import org.gradle.api.tasks.OutputFile
 import org.gradle.api.tasks.SourceSet
 import org.gradle.api.tasks.TaskAction
+import org.gradle.kotlin.dsl.configure
 import org.gradle.kotlin.dsl.create
 import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.invoke
@@ -219,21 +219,21 @@ open class HelmChart(val name: String, private val project: Project, private val
 open class HelmInstallation @Inject constructor(private val project: Project) {
   var version: String by DefaultingDelegate { "v2.8.2" }
   var os: OperatingSystem by DefaultingDelegate { OperatingSystem.detect() }
-  var helmFilename: String by DefaultingDelegate { os.filename(this) }
-  var url: String by DefaultingDelegate { os.url(this) }
+  var helmFilename: String by DefaultingDelegate { "helm-$version-${os.filenamePart}-amd64.tar.gz" }
+  var url: String by DefaultingDelegate { "https://storage.googleapis.com/kubernetes-helm/$helmFilename" }
   var workingDir: File by DefaultingDelegate { project.file("${project.buildDir}/helm") }
   var archiveFile: File by DefaultingDelegate { project.file("$workingDir/$helmFilename") }
   var homeDir: File by DefaultingDelegate { project.file("$workingDir/home") }
   var packageDir: File by DefaultingDelegate { project.file("$workingDir/package") }
   var installDir: File by DefaultingDelegate { project.file("$workingDir/install") }
   var versionFile: File by DefaultingDelegate { project.file("$workingDir/versionOutput") }
-  var executable: File by DefaultingDelegate { project.file("$installDir/${os.executable()}") }
+  var executable: File by DefaultingDelegate { project.file("$installDir/${os.executable}") }
 }
 
 open class HelmLint @Inject constructor() {
   var strict: Boolean by DefaultingDelegate { false }
-  var values: Map<String, String> by DefaultingDelegate { mapOf<String, String>() }
-  var valuesFiles: List<Any> by DefaultingDelegate { listOf<Any>() }
+  var values: Map<String, String> by DefaultingDelegate { mapOf() }
+  var valuesFiles: List<Any> by DefaultingDelegate { listOf() }
 }
 
 open class BaseRepo @Inject constructor() {
@@ -252,25 +252,25 @@ sealed class RepoImplementation {
   companion object {
     operator fun invoke(type: String): RepoImplementation {
       return if (type == "chartmuseum") {
-        ChartMuseumRepo()
+        ChartMuseumRepo
       }
       else {
-        HelmRepo()
+        HelmRepo
       }
     }
   }
 
-  open fun getPublishRequest(url: String, file: File) =
+  open fun getPublishRequest(url: String, file: File): Request.Builder =
       Request.Builder().url("$url/${file.name}").put(RequestBody.create(null, file))
 }
 
-class HelmRepo : RepoImplementation() {
-  override fun getPublishRequest(url: String, file: File) =
+object HelmRepo : RepoImplementation() {
+  override fun getPublishRequest(url: String, file: File): Request.Builder =
       Request.Builder().url("$url/${file.name}").put(RequestBody.create(null, file))
 }
 
-class ChartMuseumRepo : RepoImplementation() {
-  override fun getPublishRequest(url: String, file: File) =
+object ChartMuseumRepo : RepoImplementation() {
+  override fun getPublishRequest(url: String, file: File): Request.Builder =
       Request.Builder().url(url).post(RequestBody.create(null, file))
 }
 
@@ -283,9 +283,9 @@ class DefaultingDelegate<T>(private val supplier: () -> T) {
 }
 
 enum class OperatingSystem(
-    private val osNamePrefix: String,
-    private val executableSuffix: String = "",
-    private val filenamePart: String = osNamePrefix
+    val osNamePrefix: String,
+    val executableSuffix: String = "",
+    val filenamePart: String = osNamePrefix
 ) {
   WINDOWS("windows", executableSuffix = ".exe"),
   LINUX("linux"),
@@ -298,12 +298,7 @@ enum class OperatingSystem(
     }
   }
 
-  fun url(install: HelmInstallation) =
-      "https://storage.googleapis.com/kubernetes-helm/${filename(install)}"
-
-  fun filename(install: HelmInstallation) = "helm-${install.version}-$filenamePart-amd64.tar.gz"
-
-  fun executable() = "$filenamePart-amd64/helm$executableSuffix"
+  val executable = "$filenamePart-amd64/helm$executableSuffix"
 }
 
 internal fun <T> Project.withJava(function: JavaPluginConvention.() -> T): T =
@@ -342,12 +337,11 @@ open class InstallTask : Copy() {
   val install = Callable { helm().install.installDir }
 
   init {
-    from(project.tarTree(project.resources.gzip(archive)))
-    into(install)
+    configure {
+      from(Callable { project.tarTree(project.resources.gzip(archive)) })
+      into(install)
+    }
   }
-
-  final override fun from(vararg sourcePaths: Any): AbstractCopyTask = super.from(*sourcePaths)
-  final override fun into(destdir: Any): AbstractCopyTask = super.into(destdir)
 }
 
 abstract class HelmExecTask : Exec() {
@@ -356,11 +350,13 @@ abstract class HelmExecTask : Exec() {
   abstract val home: Callable<File>
 
   init {
-    executable(object {
-      override fun toString() = helmExecutable().toString()
-    })
-    argumentProviders.add(CommandLineArgumentProvider { listOf("--home", home().toString()) })
-    argumentProviders.addAll(helmArgs())
+    configure {
+      executable(object {
+        override fun toString() = helmExecutable().toString()
+      })
+      argumentProviders.add(CommandLineArgumentProvider { listOf("--home", home().toString()) })
+      argumentProviders.addAll(helmArgs())
+    }
   }
 
   abstract fun helmArgs(): List<CommandLineArgumentProvider>
@@ -379,7 +375,6 @@ open class InitializeTask : HelmExecTask() {
 }
 
 open class GetHelmVersionTask : HelmExecTask() {
-  @InputDirectory
   override val home = Callable { helm().install.homeDir }
   @OutputFile
   val outputFile = Callable { helm().install.versionFile }
@@ -391,12 +386,14 @@ open class GetHelmVersionTask : HelmExecTask() {
   }
 
   init {
-    standardOutput = output
-    doLast {
-      outputFile().writeBytes(output.toByteArray())
-      versionRegex.find(output.toString())?.groups?.get(1)
-          ?.also { println("Installed Helm Version: $it") }
-          ?: run { println("Could not identify installed Helm version.") }
+    configure {
+      standardOutput = output
+      doLast {
+        outputFile().writeBytes(output.toByteArray())
+        versionRegex.find(output.toString())?.groups?.get(1)
+            ?.also { println("Installed Helm Version: $it") }
+            ?: run { println("Could not identify installed Helm version.") }
+      }
     }
   }
 

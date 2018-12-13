@@ -79,6 +79,8 @@ Whenever the plugin is installed, the following tasks will be created.
 | downloadHelm | Download the appropriate helm distribution for the current architecture and operating system. | `ca.cutterslade.gradle.helm.DownloadTask` |
 | installHelm | Install helm into the local installation directory. | `ca.cutterslade.gradle.helm.InstallTask` |
 | initializeHelm | Initialize the helm home directory. | `ca.cutterslade.gradle.helm.InitializeTask` |
+| getHelmVersion | Execute `helm version --client`, and save the output. | `ca.cutterslade.gradle.helm.GetHelmVersionTask` |
+| checkHelmVersion | Check that the output captured by the `getHelmVersion` task matches the requested version of Helm | `ca.cutterslade.gradle.helm.CheckHelmVersionTask` |
 
 ### Dynamic Tasks
 For each chart configured in the build file, the plugin will create a set of tasks which operate on that chart. In the names used for the following tasks, the chart name will be munged to camel case.
