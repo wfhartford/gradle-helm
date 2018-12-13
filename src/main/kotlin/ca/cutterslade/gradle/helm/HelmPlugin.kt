@@ -9,6 +9,7 @@ import org.gradle.api.DefaultTask
 import org.gradle.api.Plugin
 import org.gradle.api.Project
 import org.gradle.api.Task
+import org.gradle.api.internal.AbstractTask
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPluginConvention
@@ -29,6 +30,7 @@ import org.gradle.kotlin.dsl.get
 import org.gradle.kotlin.dsl.invoke
 import org.gradle.kotlin.dsl.withConvention
 import org.gradle.process.CommandLineArgumentProvider
+import java.io.ByteArrayOutputStream
 import java.io.File
 import java.net.URL
 import java.nio.file.Files
@@ -48,6 +50,8 @@ open class HelmPlugin : Plugin<Project> {
     val DOWNLOAD_TASK_NAME = "downloadHelm"
     val INSTALL_TASK_NAME = "installHelm"
     val INITIALIZE_TASK_NAME = "initializeHelm"
+    val GET_VERSION_TASK_NAME = "getHelmVersion"
+    val CHECK_VERSION_TASK_NAME = "checkHelmVersion"
 
     val ENSURE_NO_CHART_TASK_NAME_FORMAT = "ensureNo%sChart"
     val CREATE_TASK_NAME_FORMAT = "create%sChart"
@@ -61,7 +65,9 @@ open class HelmPlugin : Plugin<Project> {
         VERIFY_TASK_NAME,
         DOWNLOAD_TASK_NAME,
         INSTALL_TASK_NAME,
-        INITIALIZE_TASK_NAME
+        INITIALIZE_TASK_NAME,
+        CHECK_VERSION_TASK_NAME,
+        GET_VERSION_TASK_NAME
     )
 
     val VARIABLE_TASK_NAME_FORMATS = setOf(
@@ -130,6 +136,14 @@ open class HelmPlugin : Plugin<Project> {
         create(INITIALIZE_TASK_NAME, InitializeTask::class) {
           desc("Initialise the local helm installation.")
           dependsOn(verifyTask, installTask)
+        }
+        val getVersionTask = create(GET_VERSION_TASK_NAME, GetHelmVersionTask::class) {
+          desc("Executes the helm version command.")
+          dependsOn(verifyTask, installTask)
+        }
+        create(CHECK_VERSION_TASK_NAME, CheckHelmVersionTask::class) {
+          desc("Check that the installed version of helm matches the requested.")
+          dependsOn(getVersionTask)
         }
       }
 
@@ -212,6 +226,7 @@ open class HelmInstallation @Inject constructor(private val project: Project) {
   var homeDir: File by DefaultingDelegate { project.file("$workingDir/home") }
   var packageDir: File by DefaultingDelegate { project.file("$workingDir/package") }
   var installDir: File by DefaultingDelegate { project.file("$workingDir/install") }
+  var versionFile: File by DefaultingDelegate { project.file("$workingDir/versionOutput") }
   var executable: File by DefaultingDelegate { project.file("$installDir/${os.executable()}") }
 }
 
@@ -361,6 +376,48 @@ open class InitializeTask : HelmExecTask() {
         "--client-only"
     )
   })
+}
+
+open class GetHelmVersionTask : HelmExecTask() {
+  @InputDirectory
+  override val home = Callable { helm().install.homeDir }
+  @OutputFile
+  val outputFile = Callable { helm().install.versionFile }
+
+  private val output = ByteArrayOutputStream()
+
+  companion object {
+    val versionRegex = Regex("SemVer:\"([v0-9.]+)\"")
+  }
+
+  init {
+    standardOutput = output
+    doLast {
+      outputFile().writeBytes(output.toByteArray())
+      versionRegex.find(output.toString())?.groups?.get(1)
+          ?.also { println("Installed Helm Version: $it") }
+          ?: run { println("Could not identify installed Helm version.") }
+    }
+  }
+
+  override fun helmArgs(): List<CommandLineArgumentProvider> = listOf(CommandLineArgumentProvider {
+    listOf("version", "--client")
+  })
+}
+
+open class CheckHelmVersionTask : AbstractTask() {
+  @InputFile
+  val versionFile = Callable { helm().install.versionFile }
+  @Input
+  val version = Callable { helm().install.version }
+
+  @TaskAction
+  fun checkVersion() {
+    val content = versionFile().readText()
+    val ver = version()
+    if (!content.contains("SemVer:\"$ver\""))
+      throw RuntimeException("Expected to find version $ver, but version command output was '$content'")
+  }
 }
 
 abstract class HelmChartExecTask : HelmExecTask() {
