@@ -20,7 +20,7 @@ plugins {
   `java-gradle-plugin`
   `kotlin-dsl`
   `junit-test-suite`
-  kotlin("jvm") version "1.2.61"
+  kotlin("jvm") version "1.3.11"
   id("com.gradle.plugin-publish") version "0.10.0"
 }
 
@@ -37,7 +37,7 @@ configurations["functionalTestRuntime"].extendsFrom(configurations["runtime"])
 
 dependencies {
   compile(kotlin("stdlib"))
-  compile(kotlin("stdlib-jre8"))
+  compile(kotlin("stdlib-jdk8"))
   compile(kotlin("reflect"))
   compile(gradleApi())
   compile("com.squareup.okhttp3:okhttp:3.11.0")
@@ -86,7 +86,7 @@ tasks {
     testClassesDirs = sourceSets["functionalTest"].output.classesDirs
     classpath = sourceSets["functionalTest"].runtimeClasspath
     mustRunAfter("test")
-  }.also { tasks["check"].dependsOn(it) }
+  }.also { get("check").dependsOn(it) }
 
   withType(KotlinCompile::class.java).all {
     kotlinOptions {
