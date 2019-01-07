@@ -40,24 +40,24 @@ import kotlin.reflect.KProperty
 
 open class HelmPlugin : Plugin<Project> {
   companion object {
-    val HELM_SOURCE_SET_NAME = "helm"
-    val HELM_EXTENSION_NAME = "helm"
-    val CHARTS_EXTENSION_NAME = "charts"
+    const val HELM_SOURCE_SET_NAME = "helm"
+    const val HELM_EXTENSION_NAME = "helm"
+    const val CHARTS_EXTENSION_NAME = "charts"
 
-    val VERIFY_ARCH_TASK_NAME = "helmVerifyArchitecture"
-    val VERIFY_OS_TASK_NAME = "helmVerifyOperatingSystem"
-    val VERIFY_TASK_NAME = "helmVerifySupport"
-    val DOWNLOAD_TASK_NAME = "downloadHelm"
-    val INSTALL_TASK_NAME = "installHelm"
-    val INITIALIZE_TASK_NAME = "initializeHelm"
-    val GET_VERSION_TASK_NAME = "getHelmVersion"
-    val CHECK_VERSION_TASK_NAME = "checkHelmVersion"
+    const val VERIFY_ARCH_TASK_NAME = "helmVerifyArchitecture"
+    const val VERIFY_OS_TASK_NAME = "helmVerifyOperatingSystem"
+    const val VERIFY_TASK_NAME = "helmVerifySupport"
+    const val DOWNLOAD_TASK_NAME = "downloadHelm"
+    const val INSTALL_TASK_NAME = "installHelm"
+    const val INITIALIZE_TASK_NAME = "initializeHelm"
+    const val GET_VERSION_TASK_NAME = "getHelmVersion"
+    const val CHECK_VERSION_TASK_NAME = "checkHelmVersion"
 
-    val ENSURE_NO_CHART_TASK_NAME_FORMAT = "ensureNo%sChart"
-    val CREATE_TASK_NAME_FORMAT = "create%sChart"
-    val LINT_TASK_NAME_FORMAT = "lint%sChart"
-    val PACKAGE_TASK_NAME_FORMAT = "package%sChart"
-    val PUBLISH_TASK_NAME_FORMAT = "publish%sChart"
+    const val ENSURE_NO_CHART_TASK_NAME_FORMAT = "ensureNo%sChart"
+    const val CREATE_TASK_NAME_FORMAT = "create%sChart"
+    const val LINT_TASK_NAME_FORMAT = "lint%sChart"
+    const val PACKAGE_TASK_NAME_FORMAT = "package%sChart"
+    const val PUBLISH_TASK_NAME_FORMAT = "publish%sChart"
 
     val CONSTANT_TASKS_NAMES = setOf(
         VERIFY_ARCH_TASK_NAME,
@@ -485,7 +485,10 @@ open class PackageTask : HelmChartExecTask() {
   @OutputFile
   val packageFile = Callable { project.file("${helm().install.packageDir}/${chartName()}-${chartVersion()}.tgz") }
   @InputDirectory
-  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(chartName()).toFile() }
+  val chart = Callable {
+    helmSource().output.resourcesDir?.toPath()?.resolve(chartName())?.toFile()
+        ?: throw IllegalStateException("Helm Source has no resource output dir")
+  }
 
   override fun helmArgs() = listOf(CommandLineArgumentProvider {
     listOf(
