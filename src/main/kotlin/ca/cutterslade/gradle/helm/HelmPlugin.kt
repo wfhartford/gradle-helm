@@ -58,6 +58,7 @@ open class HelmPlugin : Plugin<Project> {
     const val LINT_TASK_NAME_FORMAT = "lint%sChart"
     const val PACKAGE_TASK_NAME_FORMAT = "package%sChart"
     const val PUBLISH_TASK_NAME_FORMAT = "publish%sChart"
+    const val UPDATE_DEPENDENCIES_TASK_NAME_FORMAT = "updateDependencies%sChart"
 
     val CONSTANT_TASKS_NAMES = setOf(
         VERIFY_ARCH_TASK_NAME,
@@ -75,7 +76,8 @@ open class HelmPlugin : Plugin<Project> {
         CREATE_TASK_NAME_FORMAT,
         LINT_TASK_NAME_FORMAT,
         PACKAGE_TASK_NAME_FORMAT,
-        PUBLISH_TASK_NAME_FORMAT
+        PUBLISH_TASK_NAME_FORMAT,
+        UPDATE_DEPENDENCIES_TASK_NAME_FORMAT
     )
 
     val VARIABLE_TASK_NAME_REGEXES = VARIABLE_TASK_NAME_FORMATS.map { it.replace("%s", "\\w+") }.map { Regex(it) }
@@ -169,10 +171,22 @@ open class HelmPlugin : Plugin<Project> {
               dependsOn(sourceSet.processResourcesTaskName, *verifyAndInitialize)
               tasks["check"].dependsOn(this)
             }
+            val updateTask = create(
+                chart.formatName(UPDATE_DEPENDENCIES_TASK_NAME_FORMAT),
+                UpdateDependenciesTask::class
+            ) {
+              desc("Update the chart ${chart.name} dependencies, populating the charts directory")
+              taskChart = chart
+              dependsOn(
+                  sourceSet.processResourcesTaskName,
+                  *verifyAndInitialize
+              )
+            }
             val packageTask = create(chart.formatName(PACKAGE_TASK_NAME_FORMAT), PackageTask::class) {
               desc("Validate the chart ${chart.name} using the helm package command.")
               taskChart = chart
               dependsOn(
+                  updateTask,
                   lintTask,
                   sourceSet.processResourcesTaskName,
                   *verifyAndInitialize
@@ -375,6 +389,7 @@ open class InitializeTask : HelmExecTask() {
 }
 
 open class GetHelmVersionTask : HelmExecTask() {
+  @Internal
   override val home = Callable { helm().install.homeDir }
   @OutputFile
   val outputFile = Callable { helm().install.versionFile }
@@ -417,9 +432,12 @@ open class CheckHelmVersionTask : AbstractTask() {
   }
 }
 
-abstract class HelmChartExecTask : HelmExecTask() {
+abstract class SimpleHelmExecTask : HelmExecTask() {
   @InputDirectory
   override val home = Callable { helm().install.homeDir }
+}
+
+abstract class HelmChartExecTask : SimpleHelmExecTask() {
   @Internal
   lateinit var taskChart: HelmChart
   @Input
@@ -552,4 +570,20 @@ open class PublishTask : DefaultTask() {
       if (!it.isSuccessful) throw Exception("Unable to publish helm chart: $it")
     }
   }
+}
+
+open class UpdateDependenciesTask : HelmChartExecTask() {
+  @InputDirectory
+  val chart = Callable { helmSource().output.resourcesDir?.toPath()?.resolve(chartName())?.toFile() }
+  @OutputDirectory
+  val charts = Callable { helmSource().output.resourcesDir?.toPath()?.resolve(chartName())?.resolve("charts")?.toFile() }
+
+  override fun helmArgs(): List<CommandLineArgumentProvider> = listOf(
+      CommandLineArgumentProvider {
+        listOf(
+            "dependencies", "update",
+            chart().toString()
+        )
+      }
+  )
 }
