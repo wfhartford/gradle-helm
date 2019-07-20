@@ -574,9 +574,9 @@ open class PublishTask : DefaultTask() {
 
 open class UpdateDependenciesTask : HelmChartExecTask() {
   @InputDirectory
-  val chart = Callable { helmSource().output.resourcesDir.toPath().resolve(chartName()).toFile() }
+  val chart = Callable { helmSource().output.resourcesDir?.toPath()?.resolve(chartName())?.toFile() }
   @OutputDirectory
-  val charts = Callable { helmSource().output.resourcesDir.toPath().resolve(chartName()).resolve("charts").toFile() }
+  val charts = Callable { helmSource().output.resourcesDir?.toPath()?.resolve(chartName())?.resolve("charts")?.toFile() }
 
   override fun helmArgs(): List<CommandLineArgumentProvider> = listOf(
       CommandLineArgumentProvider {
