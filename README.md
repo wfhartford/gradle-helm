@@ -47,17 +47,17 @@ charts {
     // If not set, the chart version defaults to the project version. Note
     // that helm requires charts use symantic versioning, so if your project
     // does not, you will have to define a version like this.
-    chartVersion '1.2.3'
+    chartVersion = '1.2.3'
     
     // If not set, the app version defaults to the project version. Helm does
     // not enforce any requirements on the app version
-    appVersion '1.2.3.down-with^semver'
+    appVersion = '1.2.3.down-with^semver'
     
     // If not set, the chart directory defaults to
     // 'src/helm/resources/${chartName}'. If the chart directory is outside of
     // 'src/helm/resources' extra configuration will be required to have the
     // chart files processed into the helm source set output directory.
-    chartDir 'src/helm/resources/my-first-chart'
+    chartDir = 'src/helm/resources/my-first-chart'
     
     // Each chart can include configuration which changes how the chart is
     // validated by the lint command.
