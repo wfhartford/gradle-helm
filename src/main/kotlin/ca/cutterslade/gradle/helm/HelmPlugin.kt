@@ -167,14 +167,14 @@ open class HelmPlugin : Plugin<Project> {
               dependsOn(ensureNoChartTask, *verifyAndInitialize)
             }
             val updateTask = create(
-                    chart.formatName(UPDATE_DEPENDENCIES_TASK_NAME_FORMAT),
-                    UpdateDependenciesTask::class
+                chart.formatName(UPDATE_DEPENDENCIES_TASK_NAME_FORMAT),
+                UpdateDependenciesTask::class
             ) {
               desc("Update the chart ${chart.name} dependencies, populating the charts directory")
               taskChart = chart
               dependsOn(
-                      sourceSet.processResourcesTaskName,
-                      *verifyAndInitialize
+                  sourceSet.processResourcesTaskName,
+                  *verifyAndInitialize
               )
             }
             val lintTask = create(chart.formatName(LINT_TASK_NAME_FORMAT), LintTask::class) {
