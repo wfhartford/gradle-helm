@@ -13,6 +13,7 @@ import org.gradle.api.internal.AbstractTask
 import org.gradle.api.model.ObjectFactory
 import org.gradle.api.plugins.JavaBasePlugin
 import org.gradle.api.plugins.JavaPluginConvention
+import org.gradle.api.provider.Property
 import org.gradle.api.tasks.Copy
 import org.gradle.api.tasks.Exec
 import org.gradle.api.tasks.Input
@@ -165,12 +166,6 @@ open class HelmPlugin : Plugin<Project> {
               taskChart = chart
               dependsOn(ensureNoChartTask, *verifyAndInitialize)
             }
-            val lintTask = create(chart.formatName(LINT_TASK_NAME_FORMAT), LintTask::class) {
-              desc("Validate the chart ${chart.name} using the helm lint command.")
-              taskChart = chart
-              dependsOn(sourceSet.processResourcesTaskName, *verifyAndInitialize)
-              tasks["check"].dependsOn(this)
-            }
             val updateTask = create(
                 chart.formatName(UPDATE_DEPENDENCIES_TASK_NAME_FORMAT),
                 UpdateDependenciesTask::class
@@ -181,6 +176,12 @@ open class HelmPlugin : Plugin<Project> {
                   sourceSet.processResourcesTaskName,
                   *verifyAndInitialize
               )
+            }
+            val lintTask = create(chart.formatName(LINT_TASK_NAME_FORMAT), LintTask::class) {
+              desc("Validate the chart ${chart.name} using the helm lint command.")
+              taskChart = chart
+              dependsOn(sourceSet.processResourcesTaskName, *verifyAndInitialize, updateTask)
+              tasks["check"].dependsOn(this)
             }
             val packageTask = create(chart.formatName(PACKAGE_TASK_NAME_FORMAT), PackageTask::class) {
               desc("Validate the chart ${chart.name} using the helm package command.")
@@ -585,5 +586,19 @@ open class UpdateDependenciesTask : HelmChartExecTask() {
             chart().toString()
         )
       }
+  )
+}
+
+open class AddRepositoryTask : SimpleHelmExecTask() {
+  @Input
+  val repositoryName: Property<String> = project.objects.property(String::class.java)
+
+  @Input
+  val repositoryUrl: Property<String> = project.objects.property(String::class.java)
+
+  override fun helmArgs(): List<CommandLineArgumentProvider> = listOf(
+    CommandLineArgumentProvider {
+      listOf("repo", "add", repositoryName.get(), repositoryUrl.get())
+    }
   )
 }
