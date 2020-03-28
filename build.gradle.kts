@@ -1,5 +1,4 @@
 import org.jetbrains.kotlin.gradle.tasks.KotlinCompile
-import org.junit.platform.gradle.plugin.JUnitPlatformPlugin
 import java.time.format.DateTimeFormatter
 import java.time.LocalDateTime
 
@@ -21,7 +20,7 @@ plugins {
   `kotlin-dsl`
   `junit-test-suite`
   kotlin("jvm") version "1.3.11"
-  id("com.gradle.plugin-publish") version "0.10.0"
+  id("com.gradle.plugin-publish") version "0.11.0"
 }
 
 sourceSets.create("functionalTest") {
