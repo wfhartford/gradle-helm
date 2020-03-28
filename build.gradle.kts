@@ -3,7 +3,7 @@ import java.time.format.DateTimeFormatter
 import java.time.LocalDateTime
 
 group = "ca.cutterslade.gradle"
-version = "1.0.0-SNAPSHOT"
+version = "1.0.0-beta-11"
 
 repositories {
   jcenter()
